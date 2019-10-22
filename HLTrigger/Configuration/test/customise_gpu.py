@@ -155,7 +155,7 @@ def customise_gpu_pixel(process):
     fillStatistics = cms.bool(False),
     fit5as4 = cms.bool(True),
     hardCurvCut = cms.double(0.0328407224959),
-    idealConditions = cms.bool(True),
+    idealConditions = cms.bool(False),
     includeJumpingForwardDoublets = cms.bool(True),
     lateFishbone = cms.bool(False),
     maxNumberOfDoublets = cms.uint32(458752),
