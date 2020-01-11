@@ -62,6 +62,8 @@ public:
           break;
       }
 
+      //std::cout<<"detid dec: "<<std::dec<<detid<<" detid hex: "<<std::hex<<detid.rawId()<<std::endl;
+
       // find rechit geometry
       if (!thisCell) {
         edm::LogError("PFHBHERecHitCreator") << "warning detid " << std::hex << detid.rawId() << std::dec << " "
@@ -78,6 +80,7 @@ public:
 
       //Apply Q tests
       for (const auto& qtest : qualityTests_) {
+	//std::cout<<"WTF"<<std::endl;
         if (!qtest->test(rh, erh, rcleaned)) {
           keep = false;
         }

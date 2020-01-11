@@ -39,6 +39,8 @@ Description: Producer for ScoutingPFJets from reco::PFJet objects, ScoutingVerte
 
 #include "DataFormats/Math/interface/deltaR.h"
 
+#include "DataFormats/Math/interface/libminifloat.h"
+
 class HLTScoutingPFProducer : public edm::global::EDProducer<> {
 public:
   explicit HLTScoutingPFProducer(const edm::ParameterSet &);
@@ -149,7 +151,12 @@ void HLTScoutingPFProducer::produce(edm::StreamID sid, edm::Event &iEvent, edm::
             break;
           ++index_counter;
         }
-        outPFCandidates->emplace_back(cand.pt(), cand.eta(), cand.phi(), cand.mass(), cand.pdgId(), vertex_index);
+        Float16_t candpt = MiniFloatConverter::float16to32(MiniFloatConverter::float32to16(cand.pt()));
+	Float16_t candeta = MiniFloatConverter::float16to32(MiniFloatConverter::float32to16(cand.eta()));
+	Float16_t candphi = MiniFloatConverter::float16to32(MiniFloatConverter::float32to16(cand.phi()));
+	Float16_t candmass = MiniFloatConverter::float16to32(MiniFloatConverter::float32to16(cand.mass()));
+        //outPFCandidates->emplace_back(cand.pt(), cand.eta(), cand.phi(), cand.mass(), cand.pdgId(), vertex_index);
+	outPFCandidates->emplace_back(candpt, candeta, candphi, candmass, cand.pdgId(), vertex_index);
       }
     }
   }
@@ -181,7 +188,7 @@ void HLTScoutingPFProducer::produce(edm::StreamID sid, edm::Event &iEvent, edm::
         }
       }
       //get the PF constituents of the jet
-      std::vector<int> candIndices;
+      std::vector<int16_t> candIndices;
       if (doCandidates) {
         for (auto &cand : jet.getPFConstituents()) {
           if (cand->pt() > pfCandidatePtCut) {
@@ -200,7 +207,7 @@ void HLTScoutingPFProducer::produce(edm::StreamID sid, edm::Event &iEvent, edm::
               }
               outIndex++;
             }
-            candIndices.push_back(matchIndex);
+            candIndices.push_back(int16_t(matchIndex));
           }
         }
       }

@@ -30,7 +30,7 @@ public:
                 float HOEnergy,
                 float csv,
                 float mvaDiscriminator,
-                std::vector<int> constituents)
+                std::vector<int16_t> constituents)
       : pt_(pt),
         eta_(eta),
         phi_(phi),
@@ -78,7 +78,7 @@ public:
         HOEnergy_(0),
         csv_(0),
         mvaDiscriminator_(0),
-        constituents_(std::vector<int>()) {}
+        constituents_(std::vector<int16_t>()) {}
 
   //accessor functions
   float pt() const { return pt_; }
@@ -103,7 +103,7 @@ public:
   float HOEnergy() const { return HOEnergy_; }
   float csv() const { return csv_; }
   float mvaDiscriminator() const { return mvaDiscriminator_; }
-  std::vector<int> constituents() const { return constituents_; }
+  std::vector<int16_t> constituents() const { return constituents_; }
 
 private:
   float pt_;
@@ -128,7 +128,7 @@ private:
   float HOEnergy_;
   float csv_;
   float mvaDiscriminator_;
-  std::vector<int> constituents_;
+  std::vector<int16_t> constituents_;
 };
 
 typedef std::vector<ScoutingPFJet> ScoutingPFJetCollection;

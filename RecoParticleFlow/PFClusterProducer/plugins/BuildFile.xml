@@ -1,4 +1,4 @@
-<library   name="RecoParticleFlowPFClusterProducerPlugins" file="*.cc">
+<library   name="RecoParticleFlowPFClusterProducerPlugins" file="*.c*">
   <use   name="CondFormats/HcalObjects"/>
   <use   name="CondFormats/EcalObjects"/>
   <use   name="CondFormats/DataRecord"/>
@@ -22,7 +22,7 @@
   <use   name="RecoParticleFlow/PFClusterProducer"/>
   <flags   EDM_PLUGIN="1"/>
 </library>
-
+<use name="cuda"/>
 <library   name="RecoParticleFlowPFClusterProducerPlugins_simmappers" file="SimMappers/*.cc">
   <use   name="CondFormats/HcalObjects"/>
   <use   name="CondFormats/EcalObjects"/>

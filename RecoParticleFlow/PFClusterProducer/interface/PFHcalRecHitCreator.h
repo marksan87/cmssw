@@ -76,8 +76,11 @@ public:
       bool rcleaned = false;
       bool keep = true;
 
+      
+
       //Apply Q tests
       for (const auto& qtest : qualityTests_) {
+	
         if (!qtest->test(rh, erh, rcleaned)) {
           keep = false;
         }
