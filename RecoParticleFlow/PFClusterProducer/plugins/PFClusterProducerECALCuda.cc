@@ -97,6 +97,7 @@ PFClusterProducerECALCuda::~PFClusterProducerECALCuda()
   nSeeds->Write();
   nRecHitsPerTopoCluster->Write();
   nRecHitsPerPfCluster->Write();
+  nRecHitsPerPfCluster_Cuda->Write();
   nSeedsPerTopoCluster->Write();
   PFvsTopo->Write();
   theMap->Write();
@@ -106,6 +107,8 @@ PFClusterProducerECALCuda::~PFClusterProducerECALCuda()
   theMap4->Write();
   nRhDiff->Write();
   topoVS->Write();
+  pfclEnergy_Cpu->Write();
+  pfclEnergy_Cuda->Write();
   // MyFile->Close();
   delete MyFile;
 }
@@ -141,18 +144,45 @@ void PFClusterProducerECALCuda::produce(edm::Event& e, const edm::EventSetup& es
 
   size_t rh_size = rechits->size();
   std::cout<<rh_size<<std::endl;
-  std::vector<int> h_cuda_seedable(rechits->size(),0);
+
+  std::vector<int>                                      h_cuda_seedable(rechits->size(),0);
+  std::vector<int>                                      h_cuda_pfNeighFourInd(rechits->size()*4,0);
+  std::vector<float>                                    h_cuda_pfRhFrac(rechits->size()*50,-1.);
+  std::vector<int>                                      h_cuda_pfRhFracInd(rechits->size()*50,-1);
+  std::vector<int>                                      h_cuda_pfNeighEightInd(rechits->size()*8,0);
+  std::vector<float>                                    h_cuda_pfNeighFourEns(rechits->size()*4,0);
+  std::vector<float>                                    h_cuda_pfNeighEightEns(rechits->size()*8,0);
   std::vector<ClusterSeedingCuda::pfRhForSeeding>   	h_cuda_pfrh;
+  std::vector<ClusterSeedingCuda::pfClusterz>   	h_cuda_pfcl;
+
   std::vector<float>  	h_hbthresh;
   std::vector<float>  	h_hethresh;
 
-  int *d_cuda_seedable;
+  int                                                   *d_cuda_seedable;
   int numbytes_bools = rh_size*sizeof(int);
   cudaCheck(cudaMalloc(&d_cuda_seedable, numbytes_bools));
 
-  ClusterSeedingCuda::pfRhForSeeding  	*d_cuda_pfrh;
+  ClusterSeedingCuda::pfRhForSeeding  	                *d_cuda_pfrh;
   int numbytes_pfrh  = rh_size*sizeof(ClusterSeedingCuda::pfRhForSeeding);
   cudaCheck(cudaMalloc(&d_cuda_pfrh, numbytes_pfrh));
+
+  ClusterSeedingCuda::pfClusterz  	                *d_cuda_pfcl;
+  int numbytes_pfcl  = rh_size*sizeof(ClusterSeedingCuda::pfClusterz);
+  cudaCheck(cudaMalloc(&d_cuda_pfcl, numbytes_pfcl));
+
+  int *d_cuda_pfNeighEightInd;
+  cudaCheck(cudaMalloc(&d_cuda_pfNeighEightInd, numbytes_bools*8));
+  int *d_cuda_pfNeighFourInd;
+  cudaCheck(cudaMalloc(&d_cuda_pfNeighFourInd, numbytes_bools*4));
+  int *d_cuda_pfRhFracInd;
+  cudaCheck(cudaMalloc(&d_cuda_pfRhFracInd, numbytes_bools*50));
+  float *d_cuda_pfNeighEightEns;
+  int numbytes_floats = rh_size*sizeof(float);
+  cudaCheck(cudaMalloc(&d_cuda_pfNeighEightEns, numbytes_floats*8));
+  float *d_cuda_pfNeighFourEns;
+  cudaCheck(cudaMalloc(&d_cuda_pfNeighFourEns, numbytes_floats*4));
+  float *d_cuda_pfRhFrac;
+  cudaCheck(cudaMalloc(&d_cuda_pfRhFrac, numbytes_floats*50));
 
   float*  	d_hbthresh;
   float*  	d_hethresh;
@@ -165,11 +195,20 @@ void PFClusterProducerECALCuda::produce(edm::Event& e, const edm::EventSetup& es
   int countHb=0;
   for (auto rh: *rechits){
     ClusterSeedingCuda::pfRhForSeeding temp;
-    //math::XYZPoint  pos_rh= rh.position();
-    //std::cout<<"rh position (x,y,z): "<<pos_rh.x()<<" "<<pos_rh.y()<<" "<<pos_rh.z()<<std::endl;
+    ClusterSeedingCuda::pfClusterz     tempCl;
+    
+    tempCl.x = -9999.;
+    tempCl.y = -9999.;
+    tempCl.z = -9999.;
+    tempCl.energy = 0.;
+    tempCl.nfrac = 0;
+
     temp.rho = rh.positionREP().rho();
     temp.eta = rh.positionREP().eta();
     temp.phi = rh.positionREP().phi();
+    temp.x = rh.position().x();
+    temp.y = rh.position().y();
+    temp.z = rh.position().z();
     temp.energy = rh.energy();
     temp.pt2 = rh.pt2();
     temp.layer =(int) rh.layer();
@@ -194,42 +233,74 @@ void PFClusterProducerECALCuda::produce(edm::Event& e, const edm::EventSetup& es
 	{
       		temp.neigh_Ens[k]=(*rechits)[nh].energy();
 		double dist = (rh.position() - (*rechits)[nh].position()).mag();
-		std::cout<<"ECAL distance to neighbour "<<k<<": "<<dist<<std::endl;
+		//std::cout<<"ECAL distance to neighbour "<<k<<": "<<dist<<std::endl;
+		h_cuda_pfNeighFourInd[4*p+k] = nh;
+		h_cuda_pfNeighFourEns[4*p+k] = (*rechits)[nh].energy();
 		temp.neigh_Index[k]=nh;
 		k++;
      	}
     for(int l=k; l<4; l++)
 	{
+	        h_cuda_pfNeighFourInd[4*p+k+l] = -1;
+		h_cuda_pfNeighFourEns[4*p+k+l] = 0.0;
 		temp.neigh_Ens[l]=0.0;
 		temp.neigh_Index[l]=-1;
 		}
+
+    auto theneighboursEight = rh.neighbours8();
+    int z = 0;
+    for(auto nh: theneighboursEight)
+	{
+      		h_cuda_pfNeighEightInd[8*p+z] = nh;
+		h_cuda_pfNeighEightEns[8*p+z] = (*rechits)[nh].energy();
+		z++;
+     	}
+    for(int l=z; l<8; l++)
+	{
+	        h_cuda_pfNeighEightInd[8*p+z+l] = -1;
+		h_cuda_pfNeighEightEns[8*p+z+l] = 0.0;		
+		}
     h_cuda_pfrh.push_back(temp);
+    h_cuda_pfcl.push_back(tempCl);
     p++;
     }  
-  //std::cout<<"nHb RHL "<<countHb<<std::endl;
-  //std::cout<<"nHe RHL "<<countHe<<std::endl;
   
+
+
   cudaCheck(cudaMemcpy(d_cuda_pfrh, h_cuda_pfrh.data(), numbytes_pfrh, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpy(d_cuda_pfcl, h_cuda_pfcl.data(), numbytes_pfcl, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_seedable, h_cuda_seedable.data(), numbytes_bools, cudaMemcpyHostToDevice));
+
+  cudaCheck(cudaMemcpy(d_cuda_pfNeighEightInd, h_cuda_pfNeighEightInd.data(), numbytes_bools*8, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpy(d_cuda_pfNeighFourInd, h_cuda_pfNeighFourInd.data(), numbytes_bools*4, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpy(d_cuda_pfNeighEightEns, h_cuda_pfNeighEightEns.data(), numbytes_floats*8, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpy(d_cuda_pfNeighFourEns, h_cuda_pfNeighFourEns.data(), numbytes_floats*4, cudaMemcpyHostToDevice));
+
+ cudaCheck(cudaMemcpy(d_cuda_pfRhFrac, h_cuda_pfRhFrac.data(), numbytes_floats*50, cudaMemcpyHostToDevice));
+ cudaCheck(cudaMemcpy(d_cuda_pfRhFracInd, h_cuda_pfRhFracInd.data(), numbytes_bools*50, cudaMemcpyHostToDevice));
 
   for(int i=0;i<(int)theThresh[0].size();i++){h_hbthresh.push_back(theThresh[0][i]);}
   for(int i=0;i<(int)theThresh[1].size();i++){h_hethresh.push_back(theThresh[1][i]);}
-
-  
+ 
   cudaCheck(cudaMemcpy(d_hbthresh, h_hbthresh.data(), theThresh[0].size()*sizeof(float), cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_hethresh, h_hethresh.data(), theThresh[1].size()*sizeof(float), cudaMemcpyHostToDevice));
 
-  ClusterSeedingCuda::seedingWrapperXYZ_2ECAL(d_cuda_pfrh, d_cuda_seedable, rh_size, d_hbthresh, d_hethresh);
-  cudaMemcpy(h_cuda_pfrh.data(), d_cuda_pfrh, numbytes_pfrh, cudaMemcpyDeviceToHost);
 
-  
+  ClusterSeedingCuda::seedingWrapperXYZ_2ECAL(d_cuda_pfrh, d_cuda_seedable, rh_size, d_hbthresh, d_hethresh, d_cuda_pfNeighEightInd, d_cuda_pfNeighEightEns, d_cuda_pfcl, d_cuda_pfRhFrac, d_cuda_pfRhFracInd);
+
+  cudaMemcpy(h_cuda_pfrh.data()    , d_cuda_pfrh    , numbytes_pfrh , cudaMemcpyDeviceToHost);  
   cudaMemcpy(h_cuda_seedable.data(), d_cuda_seedable, numbytes_bools, cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_cuda_pfcl.data()    , d_cuda_pfcl    , numbytes_pfcl , cudaMemcpyDeviceToHost);  
   
-
   cudaFree(d_cuda_seedable);
   cudaFree(d_cuda_pfrh);
+  cudaFree(d_cuda_pfcl);
   cudaFree(d_hbthresh);
   cudaFree(d_hethresh);
+  cudaFree(d_cuda_pfNeighEightInd);
+  cudaFree(d_cuda_pfNeighEightEns);
+  cudaFree(d_cuda_pfRhFracInd);
+  cudaFree(d_cuda_pfRhFrac);
 
   
   /* for(auto rh: *rechits){
@@ -373,10 +444,23 @@ void PFClusterProducerECALCuda::produce(edm::Event& e, const edm::EventSetup& es
     pfClusters->insert(pfClusters->end(), initialClusters->begin(), initialClusters->end());
   }
 
+ 
+  for(int l=0;l<(int)h_cuda_pfcl.size();l++) {
+
+    if( h_cuda_pfcl[l].energy > 0 ) {
+      pfclEnergy_Cuda->Fill( h_cuda_pfcl[l].energy );
+      
+      nRecHitsPerPfCluster_Cuda->Fill( h_cuda_pfcl[l].nfrac+1 );
+      
+      //std::cout<<h_cuda_pfcl[l].energy<<std::endl;
+    }
+
+  }
   //std::cout<<"number of PF Clusters: "<<pfClusters->size()<<std::endl;
   for(auto pfc : *pfClusters)
     {
-  	nRecHitsPerPfCluster->Fill(pfc.recHitFractions().size());	
+      pfclEnergy_Cpu->Fill(pfc.energy());
+      nRecHitsPerPfCluster->Fill(pfc.recHitFractions().size());	
     }
 
   PFvsTopo->Fill(initialClusters->size(),pfClusters->size());

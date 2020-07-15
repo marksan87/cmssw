@@ -50,7 +50,8 @@ public:
   TH1F *nSeeds = new TH1F("nSeeds","nSeeds",5000,0,5000);
   TH1F *nSeedsPerTopoCluster = new TH1F("nSeedsPerTopoCluster","nSeedsPerTopoCluster",200,0,200);
   TH1F *nRecHitsPerTopoCluster = new TH1F("nRecHitsPerTopoCluster","nRecHitsPerTopoCluster",5000,0,5000);
-  TH1F *nRecHitsPerPfCluster = new TH1F("nRecHitsPerPfCluster","nRecHitsPerPfCluster",5000,0,5000);
+  TH1F *nRecHitsPerPfCluster = new TH1F("nRecHitsPerPfCluster","nRecHitsPerPfCluster",60,0,60);
+  TH1F *nRecHitsPerPfCluster_Cuda = new TH1F("nRecHitsPerPfCluster_Cuda","nRecHitsPerPfCluster_Cuda",60,0,60);
 
   TH2F *theMap = new TH2F("theMap","theMap",65,-2.825,2.825,72,-3.141592,3.1415926);
   TH2F *theMap1 = new TH2F("theMap1","theMap1",65,-2.825,2.825,72,-3.141592,3.1415926);
@@ -61,6 +62,9 @@ public:
   TH2F *PFvsTopo = new TH2F("PFvsTopo","PFvsTopo",1200,0,1200,1200,0,1200);
 
   TH1F *nRhDiff = new TH1F("nRhDiff","nRhDiff",50,0,50);
+
+  TH1F *pfclEnergy_Cuda = new TH1F("pfclEnergy_Cuda","pfclEnergy_Cuda",50,0,500);
+  TH1F *pfclEnergy_Cpu = new TH1F("pfclEnergy_Cpu","pfclEnergy_Cpu",50,0,500);
   
   // inputs
   std::vector< std::vector<double> > theThresh;
