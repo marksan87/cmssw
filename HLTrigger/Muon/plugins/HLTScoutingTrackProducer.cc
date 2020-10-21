@@ -22,6 +22,7 @@ Description: Producer for Scouting Tracks
 #include "DataFormats/TrackReco/interface/HitPattern.h"
 #include "DataFormats/TrackReco/interface/Track.h"
 #include "DataFormats/TrackReco/interface/TrackFwd.h"
+#include "DataFormats/TrackReco/interface/TrackBase.h"
 #include "DataFormats/VertexReco/interface/Vertex.h"
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include "DataFormats/Scouting/interface/ScoutingMuon.h"
@@ -84,7 +85,17 @@ void HLTScoutingTrackProducer::produce(edm::StreamID sid, edm::Event& iEvent, ed
                              trk.lambdaError(),
                              trk.phiError(),
                              trk.dsz(),
-                             trk.dszError());
+                             trk.dszError(),
+			     trk.covariance(0, 1),
+			     trk.covariance(0, 2),
+			     trk.covariance(0, 3),
+			     trk.covariance(0, 4),
+			     trk.covariance(1, 2),
+			     trk.covariance(1, 3),
+			     trk.covariance(1, 4),
+			     trk.covariance(2, 3),
+			     trk.covariance(2, 4),
+			     trk.covariance(3, 4)						);
     }
   }
 
