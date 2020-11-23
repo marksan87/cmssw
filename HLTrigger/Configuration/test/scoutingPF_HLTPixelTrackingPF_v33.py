@@ -9921,7 +9921,7 @@ process.hltParticleFlowRecHitPSUnseeded = cms.EDProducer( "PFRecHitProducer",
     ),
     navigator = cms.PSet(  name = cms.string( "PFRecHitPreshowerNavigator" ) )
 )
-process.hltParticleFlowClusterECALUncorrectedUnseeded = cms.EDProducer( "PFClusterProducer",
+process.hltParticleFlowClusterECALUncorrectedUnseeded = cms.EDProducer( "PFClusterProducerTestCudaECAL",
     pfClusterBuilder = cms.PSet( 
       minFracTot = cms.double( 1.0E-20 ),
       stoppingTolerance = cms.double( 1.0E-8 ),
@@ -9950,7 +9950,7 @@ process.hltParticleFlowClusterECALUncorrectedUnseeded = cms.EDProducer( "PFClust
           constantTerm = cms.double( 0.0 )
         )
       ),
-      maxIterations = cms.uint32( 50 ),
+      maxIterations = cms.uint32( 1 ),
       positionCalcForConvergence = cms.PSet( 
         minAllowedNormalization = cms.double( 0.0 ),
         T0_ES = cms.double( 1.2 ),
@@ -10111,7 +10111,7 @@ process.hltParticleFlowClusterECALUnseeded = cms.EDProducer( "CorrectedECALPFClu
     energyCorrector = cms.PSet(  applyCrackCorrections = cms.bool( False ) ),
     inputECAL = cms.InputTag( "hltParticleFlowClusterECALUncorrectedUnseeded" )
 )
-process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducer",
+process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducerTestCudaHCAL",
     pfClusterBuilder = cms.PSet( 
       minFracTot = cms.double( 1.0E-20 ),
       stoppingTolerance = cms.double( 1.0E-8 ),
@@ -10131,7 +10131,7 @@ process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducer",
           )
         )
       ),
-      maxIterations = cms.uint32( 50 ),
+      maxIterations = cms.uint32( 1 ),
       minChi2Prob = cms.double( 0.0 ),
       allCellsPositionCalc = cms.PSet( 
         minAllowedNormalization = cms.double( 1.0E-9 ),
@@ -13110,13 +13110,13 @@ process.HLTPixelOnlyParticleFlowSequence = cms.Sequence( process.HLTPreshowerSeq
 process.HLTPixelOnlyAK8PFJetsReconstructionSequence = cms.Sequence( process.HLTL2muonrecoSequence + process.HLTL3muonrecoSequence + process.HLTPixelOnlyTrackReconstructionForPF + process.HLTPixelOnlyParticleFlowSequence + process.hltPixelOnlyAK8PFJets + process.hltPixelOnlyAK8PFJetsLooseID + process.hltPixelOnlyAK8PFJetsTightID )
 process.HLTPixelOnlyAK8PFCorrectorProducersSequence = cms.Sequence( process.hltPixelOnlyAK8PFFastJetCorrector + process.hltPixelOnlyAK8PFRelativeCorrector + process.hltPixelOnlyAK8PFAbsoluteCorrector + process.hltPixelOnlyAK8PFResidualCorrector + process.hltPixelOnlyAK8PFCorrector )
 process.HLTPixelOnlyAK8PFJetsCorrectionSequence = cms.Sequence( process.hltPixelOnlyFixedGridRhoFastjetAll + process.HLTPixelOnlyAK8PFCorrectorProducersSequence + process.hltPixelOnlyAK8PFJetsCorrected + process.hltPixelOnlyAK8PFJetsLooseIDCorrected + process.hltPixelOnlyAK8PFJetsTightIDCorrected )
-process.HLTPixelOnlyAK8PFJetsSequence = cms.Sequence( process.HLTPreAK8PFJetsRecoSequence + process.HLTPixelOnlyAK8PFJetsReconstructionSequence + process.HLTPixelOnlyAK8PFJetsCorrectionSequence )
+process.HLTPixelOnlyAK8PFJetsSequence = cms.Sequence( process.HLTPreAK8PFJetsRecoSequence + process.HLTPixelOnlyAK8PFJetsReconstructionSequence  )
 process.HLTAK4CaloJetsPrePFRecoSequence = cms.Sequence( process.HLTDoCaloSequencePF + process.hltAK4CaloJetsPF )
 process.HLTPreAK4PFJetsRecoSequence = cms.Sequence( process.HLTAK4CaloJetsPrePFRecoSequence + process.hltAK4CaloJetsPFEt5 )
 process.HLTPixelOnlyAK4PFJetsReconstructionSequence = cms.Sequence( process.HLTL2muonrecoSequence + process.HLTL3muonrecoSequence + process.HLTPixelOnlyTrackReconstructionForPF + process.HLTPixelOnlyParticleFlowSequence + process.hltPixelOnlyAK4PFJets + process.hltPixelOnlyAK4PFJetsLooseID + process.hltPixelOnlyAK4PFJetsTightID )
 process.HLTPixelOnlyAK4PFCorrectorProducersSequence = cms.Sequence( process.hltPixelOnlyAK4PFFastJetCorrector + process.hltPixelOnlyAK4PFRelativeCorrector + process.hltAK4PFAbsoluteCorrector + process.hltPixelOnlyAK4PFResidualCorrector + process.hltPixelOnlyAK4PFCorrector )
 process.HLTPixelOnlyAK4PFJetsCorrectionSequence = cms.Sequence( process.hltPixelOnlyFixedGridRhoFastjetAll + process.HLTPixelOnlyAK4PFCorrectorProducersSequence + process.hltPixelOnlyAK4PFJetsCorrected + process.hltPixelOnlyAK4PFJetsLooseIDCorrected + process.hltPixelOnlyAK4PFJetsTightIDCorrected )
-process.HLTPixelOnlyAK4PFJetsSequence = cms.Sequence( process.HLTPreAK4PFJetsRecoSequence + process.HLTPixelOnlyAK4PFJetsReconstructionSequence + process.HLTPixelOnlyAK4PFJetsCorrectionSequence )
+process.HLTPixelOnlyAK4PFJetsSequence = cms.Sequence( process.HLTPreAK4PFJetsRecoSequence + process.HLTPixelOnlyAK4PFJetsReconstructionSequence )
 process.HLTDoFullUnpackingEgammaEcalMFSequence = cms.Sequence( process.hltEcalDigis + process.hltEcalPreshowerDigis + process.hltEcalUncalibRecHit + process.hltEcalDetIdToBeRecovered + process.hltEcalRecHit + process.hltEcalPreshowerRecHit )
 process.HLTPFClusteringEcalMFForMuons = cms.Sequence( process.hltRecHitInRegionForMuonsMF + process.hltRecHitInRegionForMuonsES + process.hltParticleFlowRecHitECALForMuonsMF + process.hltParticleFlowRecHitPSForMuons + process.hltParticleFlowClusterECALUncorrectedForMuonsMF + process.hltParticleFlowClusterPSForMuons + process.hltParticleFlowClusterECALForMuonsMF )
 process.HLTL3muonEcalPFisorecoSequenceNoBoolsForMuons = cms.Sequence( process.HLTDoFullUnpackingEgammaEcalMFSequence + process.HLTDoLocalHcalSequence + process.hltTowerMakerForECALMF + process.hltTowerMakerForHCAL + process.hltFixedGridRhoFastjetECALMFForMuons + process.hltFixedGridRhoFastjetHCAL + process.HLTPFClusteringEcalMFForMuons + process.hltMuonEcalMFPFClusterIsoForMuons )
