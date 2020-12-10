@@ -9,6 +9,8 @@
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "RecoParticleFlow/PFClusterProducer/plugins/PFClusterCudaECAL.h"
 #include <Eigen/Dense>
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
 
 namespace PFClusterCudaECAL {
 
@@ -29,6 +31,8 @@ namespace PFClusterCudaECAL {
 
   __constant__ int nNeigh = 8;
   __constant__ int maxSize = 50;
+
+ 
    
  __global__ void seedingKernel_ECAL(
      				    size_t size, 
@@ -70,25 +74,26 @@ namespace PFClusterCudaECAL {
 				  int* pfrh_layer,
 				  int* neigh8_Ind
 				  ) {
-    
-    int l = threadIdx.x+blockIdx.x*blockDim.x;
-	if(l<size) {
-	  //printf("layer: %d",pfrh_layer[l]);
-	  for(int k=0; k<nNeigh; k++){
-	    if( neigh8_Ind[nNeigh*l+k] > -1 && 
-		pfrh_topoId[l] < pfrh_topoId[neigh8_Ind[nNeigh*l+k]] && 
-		( (pfrh_layer[l] == -2 && pfrh_energy[l]>topoEThresholdEE) || 
-		  (pfrh_layer[l] == -1 && pfrh_energy[l]>topoEThresholdEB) ) )
+    for(int j=0;j<16;j++){
+      int l = threadIdx.x+blockIdx.x*blockDim.x;
+      if(l<size) {
+	//printf("layer: %d",pfrh_layer[l]);
+	for(int k=0; k<nNeigh; k++){
+	  if( neigh8_Ind[nNeigh*l+k] > -1 && 
+	      pfrh_topoId[l] < pfrh_topoId[neigh8_Ind[nNeigh*l+k]] && 
+	      ( (pfrh_layer[l] == -2 && pfrh_energy[l]>topoEThresholdEE) || 
+		(pfrh_layer[l] == -1 && pfrh_energy[l]>topoEThresholdEB) ) )
 	      {
 		pfrh_topoId[l]=pfrh_topoId[neigh8_Ind[nNeigh*l+k]];
 	      }
-	  }				       
-	}//loop end
+	}				       
+      }//loop over neighbours end
+      
+    }//loop over neumann neighbourhood clustering end
   }
   
   
-  __global__ void pfClusterKernel_ECAL_step1(
-					      
+  __global__ void pfClusterKernel_ECAL_step1(					
 					     size_t size,
 					     float* pfrh_x,
 					     float* pfrh_y,
@@ -96,8 +101,7 @@ namespace PFClusterCudaECAL {
 					     float* pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
-					     int* pfrh_layer,
-					     
+					     int* pfrh_layer,			
 					     float* pfrhfrac, 
 					     int* pfrhfracind
 					     ) {
@@ -182,12 +186,12 @@ namespace PFClusterCudaECAL {
   }//<== end of function
   
  
+  
 
 __global__ void pfClusterKernel_ECAL_step2_V2(					     
 					     size_t size, 
 					     int* pfrh_isSeed,
 					     float* pfrh_energy,
-					      
 					     float* pfrhfrac, 
 					     int* pfrhfracind, 
 					     int* pcrhfracind,
@@ -195,6 +199,7 @@ __global__ void pfClusterKernel_ECAL_step2_V2(
 					     ) {
     
     int l = threadIdx.x+blockIdx.x*blockDim.x;
+    //printf("and %d \n",l);
     if(l<size) {
       
       int nFracPerSeed=0;
@@ -227,18 +232,110 @@ __global__ void pfClusterKernel_ECAL_step2_V2(
 
     }//end of l<size
   }//end of function
+
+__global__ void fastCluster_step1( size_t size,
+					     float* pfrh_x,
+					     float* pfrh_y,
+					     float* pfrh_z,
+					     float* pfrh_energy,
+					     int* pfrh_topoId,
+					     int* pfrh_isSeed,
+					     int* pfrh_layer,
+					     float* pcrhfrac, 
+					     int* pcrhfracind,
+					     float* fracSum,
+					     int* rhCount
+					     ) {
+
+    int i = threadIdx.x+blockIdx.x*blockDim.x;
+    int j = threadIdx.y+blockIdx.y*blockDim.y;
+    //make sure topoID, Layer is the same, i is seed and j is not seed
+    if( i<size && j<size){
+      
+      if( pfrh_topoId[i] == pfrh_topoId[j] && pfrh_isSeed[i]==1 ){
+
+      float dist2 = 
+	       (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
+	      +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
+	      +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
+
+      float d2 = dist2 / (showerSigma*showerSigma);
+      float fraction = -1.;
+
+      if(pfrh_layer[j] == -1) { fraction = pfrh_energy[j] / recHitEnergyNormEB * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == -2) { fraction = pfrh_energy[j] / recHitEnergyNormEE * expf(-0.5 * d2); }
+      if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
+      
+      if( pfrh_isSeed[j]!=1 && d2<100)
+	{ 
+	  atomicAdd(&fracSum[j],fraction);	  
+	}
+      }
+    }
+  }
+
+
+__global__ void fastCluster_step2( size_t size,
+					     float* pfrh_x,
+					     float* pfrh_y,
+					     float* pfrh_z,
+					     float* pfrh_energy,
+					     int* pfrh_topoId,
+					     int* pfrh_isSeed,
+					     int* pfrh_layer,
+					     float* pcrhfrac, 
+					     int* pcrhfracind,
+					     float* fracSum,
+					     int* rhCount
+					     ) {
+
+    int i = threadIdx.x+blockIdx.x*blockDim.x;
+    int j = threadIdx.y+blockIdx.y*blockDim.y;
+    //make sure topoID, Layer is the same, i is seed and j is not seed
+    if( i<size && j<size){
+      if( pfrh_topoId[i] == pfrh_topoId[j] && pfrh_isSeed[i]==1 ){
+      if(i==j) 
+	{
+	  pcrhfrac[i*maxSize]    = 1.;
+	  pcrhfracind[i*maxSize] = j;
+	}
+      if( pfrh_isSeed[j]!=1 ){
+	float dist2 = 
+	  (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
+	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
+	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
+
+	float d2 = dist2 / (showerSigma*showerSigma);
+	float fraction = -1.;
+
+	if(pfrh_layer[j] == -1) { fraction = pfrh_energy[j] / recHitEnergyNormEB * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == -2) { fraction = pfrh_energy[j] / recHitEnergyNormEE * expf(-0.5 * d2); }
+	if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
+	if(d2 < 100 )
+	  { 
+	    if ((fraction/fracSum[j])>minFracToKeep){
+	      int k = atomicAdd(&rhCount[i],1);
+	      pcrhfrac[i*maxSize+k] = fraction/fracSum[j];
+	      pcrhfracind[i*maxSize+k] = j;
+	    }
+	  }
+      }
+      }
+    }        
+}
+  
+
    
-  void PFRechitToPFCluster_ECAL(size_t size, 
+  void PFRechitToPFCluster_ECALV1(size_t size, 
 				float* pfrh_x, 
 				float* pfrh_y, 
 				float* pfrh_z, 
 				float* pfrh_energy, 
-				float* pfrh_pt2, 				 				
+				float* pfrh_pt2,      				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
 				int* pfrh_layer, 
-				int* neigh8_Ind, 
-				
+				int* neigh8_Ind, 				
 				float* pfrhfrac, 
 				int* pfrhfracind, 
 				int* pcrhfracind,
@@ -247,23 +344,61 @@ __global__ void pfClusterKernel_ECAL_step2_V2(
   { 
     //seeding
     if(size>0) seedingKernel_ECAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
-    cudaDeviceSynchronize();
-    
-    //topoclustering
-    for(int j=0;j<16;j++){
+    //cudaDeviceSynchronize();
+      
+    for(int a=0;a<16;a++){
       if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);	    
-      cudaDeviceSynchronize();
+      //cudaDeviceSynchronize();
     }
     
     //pfclustering
-    if(size>0) pfClusterKernel_ECAL_step1<<<(size+512-1)/512, 512>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrhfrac, pfrhfracind);
-    cudaDeviceSynchronize();
+      if(size>0) pfClusterKernel_ECAL_step1<<<(size+512-1)/512, 512>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrhfrac, pfrhfracind);    
+     if(size>0) pfClusterKernel_ECAL_step2_V2<<<(size+512-1)/512, 512>>>(size, pfrh_isSeed, pfrh_energy, pfrhfrac, pfrhfracind, pcrhfracind, pcrhfrac);
 
 
+    //cudaDeviceSynchronize();
     
-    if(size>0) pfClusterKernel_ECAL_step2_V2<<<(size+512-1)/512, 512>>>(size, pfrh_isSeed, pfrh_energy, pfrhfrac, pfrhfracind, pcrhfracind, pcrhfrac);
-    cudaDeviceSynchronize();
+    //
+  }
+
+  void PFRechitToPFCluster_ECALV2(size_t size, 
+				float* pfrh_x, 
+				float* pfrh_y, 
+				float* pfrh_z, 
+				float* pfrh_energy, 
+				float* pfrh_pt2,      				
+				int* pfrh_isSeed,
+				int* pfrh_topoId, 
+				int* pfrh_layer, 
+				int* neigh8_Ind, 				
+				float* pfrhfrac, 
+				int* pfrhfracind,
+				int* pcrhfracind,
+				float* pcrhfrac,
+				float* fracSum,
+				int* rhCount
+				)
+  { 
+    //seeding
+    if(size>0) seedingKernel_ECAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
+    //cudaDeviceSynchronize();
+      
+    // for(int a=0;a<16;a++){
+    if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
+    //}	    
+    //cudaDeviceSynchronize();
+
+    dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+    dim3 block( 32, 32);
+
+    //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
+
+     if(size>0) fastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
+     //cudaDeviceSynchronize();
+
+    if(size>0) fastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
+    //cudaDeviceSynchronize();
     
-    cudaCheck(cudaGetLastError());	  
+   
   }
 }  // namespace cudavectors

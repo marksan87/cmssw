@@ -74,6 +74,14 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
     const std::string& cName = cConf.getParameter<std::string>("algoName");
     _energyCorrector = PFClusterEnergyCorrectorFactory::get()->create(cName, cConf);
   }
+  
+  //bool doComparison = false;
+
+  
+
+
+
+
 
   if (_prodInitClusters) {
     produces<reco::PFClusterCollection>("initialClusters");
@@ -85,7 +93,19 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
 
 PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
 {
-  
+  MyFile->cd();
+  nTopo_CPU->Write();
+  nTopo_GPU->Write();
+  nPFCluster_CPU->Write();
+  nPFCluster_GPU->Write();
+  enPFCluster_CPU->Write();
+  enPFCluster_GPU->Write();
+  nRH_perPFCluster_CPU->Write();
+  nRH_perPFCluster_GPU->Write();
+  nRh_CPUvsGPU->Write();
+  enPFCluster_CPUvsGPU->Write();
+  // MyFile->Close();
+  delete MyFile;
 }
 
 void PFClusterProducerCudaECAL::beginLuminosityBlock(const edm::LuminosityBlock& lumi, const edm::EventSetup& es) {
@@ -111,7 +131,7 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
     cleaner->clean(rechits, mask);
   }
 
- size_t rh_size = rechits->size();
+  size_t rh_size = 2000;
   int numbytes_float = rh_size*sizeof(float);
   int numbytes_int = rh_size*sizeof(int);
 
@@ -120,7 +140,8 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
   std::vector<int>                                      h_cuda_pfRhFracInd=std::vector<int>(rh_size*50,-1);
   std::vector<int>                                      h_cuda_pfNeighEightInd=std::vector<int>(rh_size*8,0);
   std::vector<int>                                      h_cuda_pcRhFracInd=std::vector<int>(rh_size*50,-1);
-
+  std::vector<float>                                    h_cuda_fracsum=std::vector<float>(rh_size,0);
+  std::vector<int>                                      h_cuda_rhcount=std::vector<int>(rh_size,1);
   std::vector<float>                                    h_cuda_pfrh_x=std::vector<float>(rh_size,0);
   std::vector<float>                                    h_cuda_pfrh_y=std::vector<float>(rh_size,0);
   std::vector<float>                                    h_cuda_pfrh_z=std::vector<float>(rh_size,0);
@@ -137,18 +158,17 @@ auto d_cuda_pfrh_energy = cms::cuda::make_device_unique<float[]>(numbytes_float,
 auto d_cuda_pfrh_pt2 = cms::cuda::make_device_unique<float[]>(numbytes_float, nullptr);
 auto d_cuda_pfRhFrac = cms::cuda::make_device_unique<float[]>(numbytes_float*50, nullptr);
 auto d_cuda_pcRhFrac = cms::cuda::make_device_unique<float[]>(numbytes_float*50, nullptr);
-
+auto d_cuda_rhcount = cms::cuda::make_device_unique<int[]>(numbytes_int, nullptr);
+auto d_cuda_fracsum = cms::cuda::make_device_unique<float[]>(numbytes_float, nullptr);
 auto d_cuda_pfrh_topoId = cms::cuda::make_device_unique<int[]>(numbytes_int, nullptr);
 auto d_cuda_pfrh_isSeed = cms::cuda::make_device_unique<int[]>(numbytes_int, nullptr);
 auto d_cuda_pfrh_layer = cms::cuda::make_device_unique<int[]>(numbytes_int, nullptr);
 auto d_cuda_pfNeighEightInd = cms::cuda::make_device_unique<int[]>(numbytes_int*8, nullptr);
-
 auto d_cuda_pfRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, nullptr);
 auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, nullptr);
 
   int p=0; 
   for (auto rh: *rechits){
-
     h_cuda_pfrh_x[p]=rh.position().x();
     h_cuda_pfrh_y[p]=rh.position().y();
     h_cuda_pfrh_z[p]=rh.position().z();
@@ -156,7 +176,6 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     h_cuda_pfrh_pt2[p]=rh.pt2();
     h_cuda_pfrh_layer[p]=(int)rh.layer();
     h_cuda_pfrh_topoId[p]=p;
-
     auto theneighboursEight = rh.neighbours8();
     int z = 0;
     for(auto nh: theneighboursEight)
@@ -168,12 +187,12 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
       {
 	h_cuda_pfNeighEightInd[8*p+l] = -1;
       }
-
     p++;
   }//end of rechit loop  
   //std::cout<<"p: "<<p<<std::endl;
   
-  
+  cudaCheck(cudaMemcpy(d_cuda_fracsum.get(), h_cuda_fracsum.data(), numbytes_float, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpy(d_cuda_rhcount.get(), h_cuda_rhcount.data(), numbytes_int, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pfrh_x.get(), h_cuda_pfrh_x.data(), numbytes_float, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pfrh_y.get(), h_cuda_pfrh_y.data(), numbytes_float, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pfrh_z.get(), h_cuda_pfrh_z.data(), numbytes_float, cudaMemcpyHostToDevice));
@@ -183,14 +202,30 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
   cudaCheck(cudaMemcpy(d_cuda_pfrh_isSeed.get(), h_cuda_pfrh_isSeed.data(), numbytes_int, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pfrh_layer.get(), h_cuda_pfrh_layer.data(), numbytes_int, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pfNeighEightInd.get(), h_cuda_pfNeighEightInd.data(), numbytes_int*8, cudaMemcpyHostToDevice));  
-
-  
   cudaCheck(cudaMemcpy(d_cuda_pfRhFrac.get(), h_cuda_pfRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pcRhFrac.get(), h_cuda_pcRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pfRhFracInd.get(), h_cuda_pfRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pcRhFracInd.get(), h_cuda_pcRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
 
-  PFClusterCudaECAL::PFRechitToPFCluster_ECAL(rh_size, 
+  PFClusterCudaECAL::PFRechitToPFCluster_ECALV2(rechits->size(), 
+					      d_cuda_pfrh_x.get(),  
+					      d_cuda_pfrh_y.get(),  
+					      d_cuda_pfrh_z.get(), 
+					      d_cuda_pfrh_energy.get(), 
+					      d_cuda_pfrh_pt2.get(), 	
+					      d_cuda_pfrh_isSeed.get(),
+					      d_cuda_pfrh_topoId.get(),
+					      d_cuda_pfrh_layer.get(), 
+					      d_cuda_pfNeighEightInd.get(), 
+					      d_cuda_pfRhFrac.get(), 
+					      d_cuda_pfRhFracInd.get(), 
+					      d_cuda_pcRhFracInd.get(),
+					      d_cuda_pcRhFrac.get(),
+					      d_cuda_fracsum.get(),
+					      d_cuda_rhcount.get()
+					      );
+  /*
+  PFClusterCudaECAL::PFRechitToPFCluster_ECALV1(rh_size, 
 					      d_cuda_pfrh_x.get(),  
 					      d_cuda_pfrh_y.get(),  
 					      d_cuda_pfrh_z.get(), 
@@ -204,21 +239,19 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 					      d_cuda_pfRhFracInd.get(), 
 					      d_cuda_pcRhFracInd.get(),
 					      d_cuda_pcRhFrac.get()
-					      );
+					      );*/
      
     
   cudaMemcpy(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd.get()  , numbytes_int*50 , cudaMemcpyDeviceToHost);  
   cudaMemcpy(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac.get()  , numbytes_float*50 , cudaMemcpyDeviceToHost);  
   cudaMemcpy(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
   
-  
-
   auto pfClustersFromCuda = std::make_unique<reco::PFClusterCollection>();
   pfClustersFromCuda.reset(new reco::PFClusterCollection);
   for(int n=0; n<(int)rh_size; n++){
     if(h_cuda_pfrh_isSeed[n]==1){
       reco::PFCluster temp;
-      temp.setSeed((*rechits)[n].detId());
+      temp.setSeed((*rechits)[n].detId()); 
       for(int k=0;k<50;k++){
 	if(h_cuda_pcRhFracInd[n*50+k] > -1){
 	  const reco::PFRecHitRef& refhit = reco::PFRecHitRef(rechits,h_cuda_pcRhFracInd[n*50+k]);
@@ -230,10 +263,55 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     }   
   }
   _positionReCalc->calculateAndSetPositions(*pfClustersFromCuda);
-  
-  if (_energyCorrector) {
-    _energyCorrector->correctEnergies(*pfClustersFromCuda);
-  }
+
+
+
+  if(doComparison)
+  {
+    std::vector<bool> seedable(rechits->size(), false);
+    _seedFinder->findSeeds(rechits, mask, seedable);
+    auto initialClusters = std::make_unique<reco::PFClusterCollection>();
+    _initialClustering->buildClusters(rechits, mask, seedable, *initialClusters);
+    LOGVERB("PFClusterProducer::produce()") << *_initialClustering;
+    
+    auto pfClusters = std::make_unique<reco::PFClusterCollection>();
+    pfClusters.reset(new reco::PFClusterCollection);
+    if (_pfClusterBuilder) {  // if we've defined a re-clustering step execute it
+      _pfClusterBuilder->buildClusters(*initialClusters, seedable, *pfClusters);
+    LOGVERB("PFClusterProducer::produce()") << *_pfClusterBuilder;
+    } else {
+      pfClusters->insert(pfClusters->end(), initialClusters->begin(), initialClusters->end());
+    }
+    
+    
+    for(auto pfc : *pfClusters)
+    {
+      nRH_perPFCluster_CPU->Fill(pfc.recHitFractions().size());
+	enPFCluster_CPU->Fill(pfc.energy());
+	for(auto pfcx : *pfClustersFromCuda)
+	  {
+	    if(pfc.seed()==pfcx.seed()){
+	      nRh_CPUvsGPU->Fill(pfcx.recHitFractions().size(),pfc.recHitFractions().size());
+	      enPFCluster_CPUvsGPU->Fill(pfcx.energy(),pfc.energy());
+	      /*if(pfcx.recHitFractions().size()>30){
+		std::cout<<"fractions"<<std::endl;
+		for(auto rhf: pfcx.recHitFractions()) std::cout<<rhf.fraction()<<"  ";
+		std::cout<<std::endl;
+		for(auto rhf: pfc.recHitFractions()) std::cout<<rhf.fraction()<<"  ";
+		std::cout<<std::endl;*/
+	      //}
+	    }
+	  }
+    }
+    
+    for(auto pfc : *pfClustersFromCuda)
+      {
+  	nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());
+	enPFCluster_GPU->Fill(pfc.energy());
+      }
+    
+}
+
 
   if (_prodInitClusters)
     e.put(std::move(pfClustersFromCuda), "initialClusters");

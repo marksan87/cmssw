@@ -9921,7 +9921,7 @@ process.hltParticleFlowRecHitPSUnseeded = cms.EDProducer( "PFRecHitProducer",
     ),
     navigator = cms.PSet(  name = cms.string( "PFRecHitPreshowerNavigator" ) )
 )
-process.hltParticleFlowClusterECALUncorrectedUnseeded = cms.EDProducer( "PFClusterProducerTestCudaECAL",
+process.hltParticleFlowClusterECALUncorrectedUnseeded = cms.EDProducer( "PFClusterProducerCudaECAL",
     pfClusterBuilder = cms.PSet( 
       minFracTot = cms.double( 1.0E-20 ),
       stoppingTolerance = cms.double( 1.0E-8 ),
@@ -10111,7 +10111,7 @@ process.hltParticleFlowClusterECALUnseeded = cms.EDProducer( "CorrectedECALPFClu
     energyCorrector = cms.PSet(  applyCrackCorrections = cms.bool( False ) ),
     inputECAL = cms.InputTag( "hltParticleFlowClusterECALUncorrectedUnseeded" )
 )
-process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducerTestCudaHCAL",
+process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducer",
     pfClusterBuilder = cms.PSet( 
       minFracTot = cms.double( 1.0E-20 ),
       stoppingTolerance = cms.double( 1.0E-8 ),
@@ -13158,7 +13158,7 @@ process.source = cms.Source( "PoolSource",
 
 # limit the number of events to be processed
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32( 100 )
+    input = cms.untracked.int32( 2000 )
 )
 
 # enable TrigReport, TimeReport and MultiThreading
@@ -13199,7 +13199,7 @@ _customInfo['globalTags'][False] = "auto:run3_mc_GRun"
 _customInfo['inputFiles']={}
 _customInfo['inputFiles'][True]  = "file:RelVal_Raw_GRun_DATA.root"
 _customInfo['inputFiles'][False] = "file:RelVal_Raw_GRun_MC.root"
-_customInfo['maxEvents' ]=  100
+_customInfo['maxEvents' ]=  2000
 _customInfo['globalTag' ]= "110X_mcRun3_2021_realistic_v6"
 _customInfo['inputFile' ]=  ['/store/relval/CMSSW_11_0_0_patch1/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_110X_mcRun3_2021_realistic_v6-v1/20000/0788CFB2-4391-3244-B51C-2A9822597230.root']
 _customInfo['realData'  ]=  False

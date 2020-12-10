@@ -58,6 +58,25 @@ public:
   std::unique_ptr<PFCPositionCalculatorBase> _positionReCalc;
   std::unique_ptr<PFCPositionCalculatorBase> _allCellsPosCalc;
   std::unique_ptr<PFClusterEnergyCorrectorBase> _energyCorrector;
+
+TFile *MyFile = new TFile("EventECAL.root","recreate");
+  TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",500,0,500);
+  TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",500,0,500);
+
+  TH1F *nPFCluster_CPU = new TH1F("nPFCluster_CPU","nPFCluster_CPU",500,0,500);
+  TH1F *nPFCluster_GPU = new TH1F("nPFCluster_GPU","nPFCluster_GPU",500,0,500);
+
+  TH1F *enPFCluster_CPU = new TH1F("enPFCluster_CPU","enPFCluster_CPU",500,0,500);
+  TH1F *enPFCluster_GPU = new TH1F("enPFCluster_GPU","enPFCluster_GPU",500,0,500);
+
+  TH1F *nRH_perPFCluster_CPU = new TH1F("nRH_perPFCluster_CPU","nRH_perPFCluster_CPU",100,0,100);
+  TH1F *nRH_perPFCluster_GPU = new TH1F("nRH_perPFCluster_GPU","nRH_perPFCluster_GPU",100,0,100);
+
+  TH2F *nRh_CPUvsGPU = new TH2F("nRh_CPUvsGPU","nRh_CPUvsGPU",100,0,100,100,0,100);
+  TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",500,0,500,500,0,500);
+
+  bool doComparison=false;
+
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaECAL);
