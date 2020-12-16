@@ -75,7 +75,7 @@ TFile *MyFile = new TFile("EventECAL.root","recreate");
   TH2F *nRh_CPUvsGPU = new TH2F("nRh_CPUvsGPU","nRh_CPUvsGPU",100,0,100,100,0,100);
   TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",500,0,500,500,0,500);
 
-  bool doComparison=false;
+  bool doComparison=true;
 
 };
 
