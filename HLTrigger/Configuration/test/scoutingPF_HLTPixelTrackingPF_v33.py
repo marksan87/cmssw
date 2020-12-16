@@ -10111,7 +10111,7 @@ process.hltParticleFlowClusterECALUnseeded = cms.EDProducer( "CorrectedECALPFClu
     energyCorrector = cms.PSet(  applyCrackCorrections = cms.bool( False ) ),
     inputECAL = cms.InputTag( "hltParticleFlowClusterECALUncorrectedUnseeded" )
 )
-process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducer",
+process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducerCudaHCAL",
     pfClusterBuilder = cms.PSet( 
       minFracTot = cms.double( 1.0E-20 ),
       stoppingTolerance = cms.double( 1.0E-8 ),
@@ -10206,8 +10206,7 @@ process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducer",
     seedCleaners = cms.VPSet( 
     ),
     energyCorrector = cms.PSet(  ),
-    recHitCleaners = cms.VPSet( 
-    ),
+    recHitCleaners = cms.VPSet(  ),
     seedFinder = cms.PSet( 
       thresholdsByDetector = cms.VPSet( 
         cms.PSet(  detector = cms.string( "HCAL_BARREL1" ),
@@ -13164,7 +13163,7 @@ process.maxEvents = cms.untracked.PSet(
 # enable TrigReport, TimeReport and MultiThreading
 process.options = cms.untracked.PSet(
     wantSummary = cms.untracked.bool( True ),
-    numberOfThreads = cms.untracked.uint32( 4 ),
+    numberOfThreads = cms.untracked.uint32( 1 ),
     numberOfStreams = cms.untracked.uint32( 0 ),
     sizeOfStackForThreadsInKB = cms.untracked.uint32( 10*1024 )
 )
