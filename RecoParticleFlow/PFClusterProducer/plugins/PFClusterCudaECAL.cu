@@ -120,11 +120,11 @@ __global__ void fastCluster_step1( size_t size,
 	      +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	      +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-      float d2 = dist2 / (showerSigma*showerSigma);
+      float d2 = dist2 / showerSigma;//(showerSigma*showerSigma);
       float fraction = -1.;
 
-      if(pfrh_layer[j] == -1) { fraction = pfrh_energy[j] / recHitEnergyNormEB * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == -2) { fraction = pfrh_energy[j] / recHitEnergyNormEE * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == -2) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
       if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
       
       if( pfrh_isSeed[j]!=1 && d2<100)
@@ -162,17 +162,17 @@ __global__ void fastCluster_step2( size_t size,
 	}
       if( pfrh_isSeed[j]!=1 ){
 	float dist2 = 
-	  (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
+	   (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
 	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-	float d2 = dist2 / (showerSigma*showerSigma);
+	float d2 = dist2 / showerSigma;//(showerSigma*showerSigma);
 	float fraction = -1.;
 
-	if(pfrh_layer[j] == -1) { fraction = pfrh_energy[j] / recHitEnergyNormEB * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == -2) { fraction = pfrh_energy[j] / recHitEnergyNormEE * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == -2) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
 	if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
-	if(d2 < 100 )
+	if(d2 < 100. )
 	  { 
 	    if ((fraction/fracSum[j])>minFracToKeep){
 	      int k = atomicAdd(&rhCount[i],1);
@@ -213,7 +213,7 @@ __global__ void fastCluster_step2( size_t size,
     // for(int a=0;a<16;a++){
     if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
     //}	    
-    //cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
 
     dim3 grid( (size+32-1)/32, (size+32-1)/32 );
     dim3 block( 32, 32);
@@ -221,10 +221,10 @@ __global__ void fastCluster_step2( size_t size,
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
      if(size>0) fastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     //cudaDeviceSynchronize();
+     cudaDeviceSynchronize();
 
     if(size>0) fastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-    //cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
     
    
   }

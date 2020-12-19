@@ -162,19 +162,19 @@ __global__ void hcalFastCluster_step1( size_t size,
 	      +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	      +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);
 
-      float d2 = dist2 / (showerSigma*showerSigma);
+      float d2 = dist2 / showerSigma;//(showerSigma*showerSigma);
       float fraction = -1.;
 
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[j] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[j] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[j] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[j] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[j] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[j] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
 	  
       if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
-      if( pfrh_isSeed[j]!=1 && d2<100)
+      if( pfrh_isSeed[j]!=1 && d2<100.)
 	{
 	  atomicAdd(&fracSum[j],fraction);
 	}
@@ -210,23 +210,23 @@ __global__ void hcalFastCluster_step2( size_t size,
 	}
       if( pfrh_isSeed[j]!=1 ){
 	float dist2 =
-	  (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
+	   (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
 	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);
 
-	float d2 = dist2 / (showerSigma*showerSigma);
+	float d2 = dist2 / showerSigma;//(showerSigma*showerSigma);
 	float fraction = -1.;
 
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[j] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[j] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[j] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[j] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[j] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[j] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
+	if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
 	  
 	
 	if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
-	if(d2 < 100 )
+	if(d2 < 100. )
 	  {
 	    if ((fraction/fracSum[j])>minFracToKeep){
 	      int k = atomicAdd(&rhCount[i],1);
