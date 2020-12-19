@@ -77,6 +77,7 @@ void LocalMaximumSeedFinder::findSeeds(const edm::Handle<reco::PFRecHitCollectio
     if (!mask[i])
       continue;  // cannot seed masked objects
     auto const& maybeseed = (*input)[i];
+
     energies[i] = maybeseed.energy();
     int seedlayer = (int)maybeseed.layer();
     if (seedlayer == PFLayer::HCAL_BARREL2 && std::abs(maybeseed.positionREP().eta()) > 0.34) {
@@ -139,10 +140,30 @@ void LocalMaximumSeedFinder::findSeeds(const edm::Handle<reco::PFRecHitCollectio
       }
     }
     if (seedable[idx]) {
+
       for (auto neighbour : myNeighbours) {
-        usable[neighbour] = false;
+
+	// for HCAL and only 4 neighbors are considered,
+	// even if channel a is a neighbor of channel b,
+	// channel b may not be a neighbor of channel a.
+	// so, do additional checks to ensure making a hit unusable for seed is safe.
+	if (_nNeighbours==4) {
+	  int seedlayer = (int)maybeseed.layer();
+	  if (seedlayer == PFLayer::HCAL_BARREL1 || 
+	      seedlayer == PFLayer::HCAL_ENDCAP || 
+	      seedlayer == PFLayer::HF_EM || 
+	      seedlayer == PFLayer::HF_HAD) {
+	    auto const& nei = (*input)[neighbour];
+	    if ( maybeseed.depth() != nei.depth() ) continue;
+	    if ( fabs(maybeseed.positionREP().phi() - nei.positionREP().phi()) > 0.01 ) continue;
+	  }
+	}
+
+	usable[neighbour] = false;
+
       }
     }
+
   }
 
   LogDebug("LocalMaximumSeedFinder") << " found " << std::count(seedable.begin(), seedable.end(), true) << " seeds";
