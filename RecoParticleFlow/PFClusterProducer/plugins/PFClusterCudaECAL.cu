@@ -120,7 +120,7 @@ __global__ void fastCluster_step1( size_t size,
 	      +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	      +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-      float d2 = dist2 / showerSigma;//(showerSigma*showerSigma);
+      float d2 = dist2 / (showerSigma*showerSigma);
       float fraction = -1.;
 
       if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
@@ -166,7 +166,7 @@ __global__ void fastCluster_step2( size_t size,
 	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-	float d2 = dist2 / showerSigma;//(showerSigma*showerSigma);
+	float d2 = dist2 / (showerSigma*showerSigma);
 	float fraction = -1.;
 
 	if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
