@@ -107,36 +107,7 @@ namespace PFClusterCudaHCAL {
    }
  }
   
-  /* __global__ void topoKernel_HCAL( 
-				  size_t size,
-				  double* pfrh_energy,
-				  int* pfrh_topoId,
-				  int* pfrh_layer,
-				  int* pfrh_depth,
-				  int* neigh8_Ind
-				  ) {
-    for(int h=0;h<146; h++){
-      int l = threadIdx.x+blockIdx.x*blockDim.x;
-      if(l<size) {
-	//printf("layer: %d",pfrh_layer[l]);
-	for(int k=0; k<nNeighTopo; k++){
-	  if( neigh8_Ind[nNeighTopo*l+k] > -1 && 
-	      pfrh_topoId[l] < pfrh_topoId[neigh8_Ind[nNeighTopo*l+k]] && 
-	      ( (pfrh_layer[neigh8_Ind[nNeighTopo*l+k]] == 3 &&  pfrh_depth[neigh8_Ind[nNeighTopo*l+k]] == 1 && pfrh_energy[neigh8_Ind[nNeighTopo*l+k]]>topoEThresholdEE_1)   ||
-		(pfrh_layer[neigh8_Ind[nNeighTopo*l+k]] == 3 &&  pfrh_depth[neigh8_Ind[nNeighTopo*l+k]] >  1 && pfrh_energy[neigh8_Ind[nNeighTopo*l+k]]>topoEThresholdEE_2_7) ||
-		(pfrh_layer[neigh8_Ind[nNeighTopo*l+k]] == 1 &&  pfrh_depth[neigh8_Ind[nNeighTopo*l+k]] == 1 && pfrh_energy[neigh8_Ind[nNeighTopo*l+k]]>topoEThresholdEB_1) ||
-		(pfrh_layer[neigh8_Ind[nNeighTopo*l+k]] == 1 &&  pfrh_depth[neigh8_Ind[nNeighTopo*l+k]] == 2 && pfrh_energy[neigh8_Ind[nNeighTopo*l+k]]>topoEThresholdEB_2) ||
-		(pfrh_layer[neigh8_Ind[nNeighTopo*l+k]] == 1 &&  pfrh_depth[neigh8_Ind[nNeighTopo*l+k]] == 3 && pfrh_energy[neigh8_Ind[nNeighTopo*l+k]]>topoEThresholdEB_3) ||
-		(pfrh_layer[neigh8_Ind[nNeighTopo*l+k]] == 1 &&  pfrh_depth[neigh8_Ind[nNeighTopo*l+k]] == 4 && pfrh_energy[neigh8_Ind[nNeighTopo*l+k]]>topoEThresholdEB_4)
-		) 
-	      )
-	    {
-	      pfrh_topoId[l] = pfrh_topoId[neigh8_Ind[nNeighTopo*l+k]];
-	    }
-	}				       
-	}//loop end
-    }
-  }*/
+  
 
 
    __global__ void topoKernel_HCALV2( 
@@ -169,73 +140,7 @@ namespace PFClusterCudaHCAL {
 	    }	
       }
    }
-
-  __global__ void topoKernel_HCALV3( 
-				  size_t size,
-				  double* pfrh_energy,
-				  int* pfrh_topoId,
-				  int* pfrh_layer,
-				  int* pfrh_depth,
-				  int* neigh8_Ind
-				  ) {
-    for(int h=0;h<40; h++){
-      int l = threadIdx.x+blockIdx.x*blockDim.x;
-      int k = threadIdx.y+blockIdx.y*blockDim.y;
-      int index = (nNeighTopo+1)*l;
-      if(l<size && k<(nNeighTopo+1)) {
-
-	if(neigh8_Ind[index+k]>-1 && (
-	    (pfrh_layer[neigh8_Ind[index+k]] == 3 &&  pfrh_depth[neigh8_Ind[index+k]] == 1 && pfrh_energy[neigh8_Ind[index+k]]>topoEThresholdEE_1)   ||
-	    (pfrh_layer[neigh8_Ind[index+k]] == 3 &&  pfrh_depth[neigh8_Ind[index+k]] >  1 && pfrh_energy[neigh8_Ind[index+k]]>topoEThresholdEE_2_7) ||
-	    (pfrh_layer[neigh8_Ind[index+k]] == 1 &&  pfrh_depth[neigh8_Ind[index+k]] == 1 && pfrh_energy[neigh8_Ind[index+k]]>topoEThresholdEB_1) ||
-	    (pfrh_layer[neigh8_Ind[index+k]] == 1 &&  pfrh_depth[neigh8_Ind[index+k]] == 2 && pfrh_energy[neigh8_Ind[index+k]]>topoEThresholdEB_2) ||
-	    (pfrh_layer[neigh8_Ind[index+k]] == 1 &&  pfrh_depth[neigh8_Ind[index+k]] == 3 && pfrh_energy[neigh8_Ind[index+k]]>topoEThresholdEB_3) ||
-	    (pfrh_layer[neigh8_Ind[index+k]] == 1 &&  pfrh_depth[neigh8_Ind[index+k]] == 4 && pfrh_energy[neigh8_Ind[index+k]]>topoEThresholdEB_4)
-		) 
-	   )
-	    {
-	      int maximum = 0;	      
-	      atomicMax(&maximum, pfrh_topoId[neigh8_Ind[index+k]]);
-	      pfrh_topoId[neigh8_Ind[index+k]] = maximum;
-	    }
-	  				       
-      }
-    }//loop end
-  }
-
-
-
- __global__ void topoKernel_HCAL( 
-				  size_t size,
-				  double* pfrh_energy,
-				  int* pfrh_topoId,
-				  int* pfrh_layer,
-				  int* pfrh_depth,
-				  int* neigh8_Ind
-				  ) {
-    for(int h=0;h<60; h++){
-      int l = threadIdx.x+blockIdx.x*blockDim.x;
-      if(l<size) {
-	//printf("layer: %d",pfrh_layer[l]);
-	for(int k=0; k<nNeighTopo; k++){
-	  if( neigh8_Ind[nNeighTopo*l+k] > -1 && 
-	      pfrh_topoId[l] < pfrh_topoId[neigh8_Ind[nNeighTopo*l+k]] && 
-	      ( (pfrh_layer[l] == 3 &&  pfrh_depth[l] == 1 && pfrh_energy[l]>topoEThresholdEE_1)   ||
-		(pfrh_layer[l] == 3 &&  pfrh_depth[l] >  1 && pfrh_energy[l]>topoEThresholdEE_2_7) ||
-		(pfrh_layer[l] == 1 &&  pfrh_depth[l] == 1 && pfrh_energy[l]>topoEThresholdEB_1) ||
-		(pfrh_layer[l] == 1 &&  pfrh_depth[l] == 2 && pfrh_energy[l]>topoEThresholdEB_2) ||
-		(pfrh_layer[l] == 1 &&  pfrh_depth[l] == 3 && pfrh_energy[l]>topoEThresholdEB_3) ||
-		(pfrh_layer[l] == 1 &&  pfrh_depth[l] == 4 && pfrh_energy[l]>topoEThresholdEB_4)
-		) 
-	      )
-	    {
-	      pfrh_topoId[l]=pfrh_topoId[neigh8_Ind[nNeighTopo*l+k]];
-	    }
-	}				       
-	}//loop end
-    }
-  }
-  
+ 
  
 __global__ void hcalFastCluster_step1( size_t size,
 					     float* pfrh_x,
@@ -371,12 +276,9 @@ void PFRechitToPFCluster_HCALV2(size_t size,
       
       dim3 gridT( (size+64-1)/64, 1 );
       dim3 blockT( 64, 8);
-      for(int h=0;h<30; h++){
+      for(int h=0;h<35; h++){
     
-      if(size>0) topoKernel_HCALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	    
-      //if(size>0) topoKernel_HCALV3<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	    
-      //  if(size>0) topoKernel_HCAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);
-    
+      if(size>0) topoKernel_HCALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
       }
      cudaDeviceSynchronize();
     
