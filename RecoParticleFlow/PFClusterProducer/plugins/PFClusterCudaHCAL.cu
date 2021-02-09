@@ -294,4 +294,50 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 
 
   }
+
+void PFRechitToPFCluster_HCAL_serialize(size_t size, 
+				float* pfrh_x, 
+				float* pfrh_y, 
+				float* pfrh_z, 
+				double* pfrh_energy, 
+				double* pfrh_pt2,    				
+				int* pfrh_isSeed,
+				int* pfrh_topoId, 
+				int* pfrh_layer, 
+				int* pfrh_depth, 
+				int* neigh8_Ind, 
+				int* neigh4_Ind, 				
+				
+				int* pcrhfracind,
+				float* pcrhfrac,
+				float* fracSum,
+				int* rhCount
+				)
+  { 
+    //seeding
+    if(size>0) seedingKernel_HCAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
+    //cudaDeviceSynchronize();
+    
+    //topoclustering 
+      
+      dim3 gridT( (size+64-1)/64, 1 );
+      dim3 blockT( 64, 8);
+      for(int h=0;h<35; h++){
+    
+      if(size>0) topoKernel_HCALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
+      }
+     cudaDeviceSynchronize();
+    
+    
+
+      dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+      dim3 block( 32, 32);
+
+      if(size>0) hcalFastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
+     //cudaDeviceSynchronize();
+
+      if(size>0) hcalFastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
+
+
+  }
 } // namespace cudavectors

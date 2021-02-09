@@ -107,6 +107,9 @@ PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
   enPFCluster_CPUvsGPU_1d->Write();
   coordinate->Write();
   layer->Write();
+  deltaEn->Write();
+  deltaEta->Write();
+  deltaPhi->Write();
   // MyFile->Close();
   delete MyFile;
 }
@@ -436,15 +439,18 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 	      if(abs((pfcx.energy()-pfc.energy())/pfc.energy())>0.05){
 
 		coordinate->Fill(pfcx.eta(),pfcx.phi());
-		
+	    deltaEn->Fill(pfcx.energy() - pfc.energy());
+	    deltaEta->Fill(pfcx.eta() - pfc.eta());
+	    deltaPhi->Fill(pfcx.phi() - pfc.phi());
+
 		for(auto rhf: pfc.recHitFractions()){
 		  if(rhf.fraction()==1)layer->Fill(rhf.recHitRef()->depth());
 		}
-		std::cout<<std::endl;
-		std::cout<<"fractions"<<std::endl;
-		for(auto rhf: pfcx.recHitFractions()) std::cout<<rhf.fraction()<<", eta:"<<rhf.recHitRef()->positionREP().eta()<<", phi:"<< rhf.recHitRef()->positionREP().phi()<<"  ";
-		std::cout<<std::endl;
-		for(auto rhf: pfc.recHitFractions()) std::cout<<rhf.fraction()<<", eta:"<<rhf.recHitRef()->positionREP().eta()<<", phi:"<< rhf.recHitRef()->positionREP().phi()<<"  ";
+//		std::cout<<std::endl;
+//		std::cout<<"fractions"<<std::endl;
+//		for(auto rhf: pfcx.recHitFractions()) std::cout<<rhf.fraction()<<", eta:"<<rhf.recHitRef()->positionREP().eta()<<", phi:"<< rhf.recHitRef()->positionREP().phi()<<"  ";
+//		std::cout<<std::endl;
+//		for(auto rhf: pfc.recHitFractions()) std::cout<<rhf.fraction()<<", eta:"<<rhf.recHitRef()->positionREP().eta()<<", phi:"<< rhf.recHitRef()->positionREP().phi()<<"  ";
 	      }
 	      /*if(abs((int)(pfcx.recHitFractions().size() - pfc.recHitFractions().size() ))>30){
 		std::cout<<"fractions"<<std::endl;

@@ -104,6 +104,12 @@ PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
   nRH_perPFCluster_GPU->Write();
   nRh_CPUvsGPU->Write();
   enPFCluster_CPUvsGPU->Write();
+  coordinate->Write();
+  layer->Write();
+  deltaEn->Write();
+  deltaEta->Write();
+  deltaPhi->Write();
+
   // MyFile->Close();
   delete MyFile;
 }
@@ -293,6 +299,18 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 	    if(pfc.seed()==pfcx.seed()){
 	      nRh_CPUvsGPU->Fill(pfcx.recHitFractions().size(),pfc.recHitFractions().size());
 	      enPFCluster_CPUvsGPU->Fill(pfcx.energy(),pfc.energy());
+
+          if(abs((pfcx.energy()-pfc.energy())/pfc.energy())>0.05){
+
+            coordinate->Fill(pfcx.eta(),pfcx.phi());
+            deltaEn->Fill(pfcx.energy() - pfc.energy());
+            deltaEta->Fill(pfcx.eta() - pfc.eta());
+            deltaPhi->Fill(pfcx.phi() - pfc.phi());
+
+            for(auto rhf: pfc.recHitFractions()){
+              if(rhf.fraction()==1)layer->Fill(rhf.recHitRef()->depth());
+             }
+            }
 	      /*if(pfcx.recHitFractions().size()>30){
 		std::cout<<"fractions"<<std::endl;
 		for(auto rhf: pfcx.recHitFractions()) std::cout<<rhf.fraction()<<"  ";
