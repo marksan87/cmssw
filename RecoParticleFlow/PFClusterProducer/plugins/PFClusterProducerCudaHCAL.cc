@@ -28,6 +28,10 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
   _prodInitClusters(conf.getUntrackedParameter<bool>("prodInitialClusters", false)) {
   _rechitsLabel = consumes<reco::PFRecHitCollection>(conf.getParameter<edm::InputTag>("recHitsSource"));
 
+  //setup TTree
+  clusterTree->Branch("initialClusters", "PFClusterCollection", &__initialClusters);
+  clusterTree->Branch("pfClusters", "PFClusterCollection", &__pfClusters);
+  clusterTree->Branch("pfClustersFromCuda", "PFClusterCollection", &__pfClustersFromCuda);
 
   //setup rechit cleaners
   const edm::VParameterSet& cleanerConfs = conf.getParameterSetVector("recHitCleaners");
@@ -94,6 +98,7 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
 PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
 {
   MyFile->cd();
+  clusterTree->Write();
   nTopo_CPU->Write();
   nTopo_GPU->Write();
   sumSeed_CPU->Write();
@@ -374,6 +379,8 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
     _seedFinder->findSeeds(rechits, mask, seedable);
     auto initialClusters = std::make_unique<reco::PFClusterCollection>();
     _initialClustering->buildClusters(rechits, mask, seedable, *initialClusters);
+    __initialClusters = *initialClusters;  // For TTree
+    
     int topoRhCount=0;
     for(auto pfc : *initialClusters)
       {
@@ -437,14 +444,13 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
     auto pfClusters = std::make_unique<reco::PFClusterCollection>();
     pfClusters.reset(new reco::PFClusterCollection);
     if (_pfClusterBuilder) {  // if we've defined a re-clustering step execute it
-      std::cout<<"*** Reclustering HCAL ***"<<std::endl;
       _pfClusterBuilder->buildClusters(*initialClusters, seedable, *pfClusters);
     LOGVERB("PFClusterProducer::produce()") << *_pfClusterBuilder;
     } else {
       pfClusters->insert(pfClusters->end(), initialClusters->begin(), initialClusters->end());
     }
 
-
+    __pfClusters = *pfClusters;  // For TTree
     for(auto pfc : *pfClusters)
     {
       nRH_perPFCluster_CPU->Fill(pfc.recHitFractions().size());
@@ -483,15 +489,16 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 	  }
     }
 
+    __pfClustersFromCuda = *pfClustersFromCuda;      // For TTree
     for(auto pfc : *pfClustersFromCuda)
       {
   	nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());
 	enPFCluster_GPU->Fill(pfc.energy());
       }
 
-}
+  }
 
-
+  clusterTree->Fill();
   if (_prodInitClusters)
     e.put(std::move(pfClustersFromCuda), "initialClusters");
   e.put(std::move(pfClustersFromCuda));

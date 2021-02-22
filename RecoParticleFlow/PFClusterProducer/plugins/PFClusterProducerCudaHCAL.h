@@ -21,6 +21,7 @@
 #include <TFile.h>
 #include <TH1F.h>
 #include <TH2F.h>
+#include <TTree.h>
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
@@ -61,6 +62,13 @@ public:
   std::unique_ptr<PFClusterEnergyCorrectorBase> _energyCorrector;
 
   TFile *MyFile = new TFile("EventHCAL.root","recreate");
+
+  reco::PFClusterCollection __initialClusters;
+  reco::PFClusterCollection __pfClusters;
+  reco::PFClusterCollection __pfClustersFromCuda;
+
+  TTree *clusterTree = new TTree("clusterTree", "clusterTree");
+  
   TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",500,0,500);
   TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",500,0,500);
 

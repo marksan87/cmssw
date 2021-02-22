@@ -27,6 +27,10 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
   _prodInitClusters(conf.getUntrackedParameter<bool>("prodInitialClusters", false)) {
   _rechitsLabel = consumes<reco::PFRecHitCollection>(conf.getParameter<edm::InputTag>("recHitsSource"));
 
+  //setup TTree
+  clusterTree->Branch("initialClusters", "PFClusterCollection", &__initialClusters);
+  clusterTree->Branch("pfClusters", "PFClusterCollection", &__pfClusters);
+  clusterTree->Branch("pfClustersFromCuda", "PFClusterCollection", &__pfClustersFromCuda);
 
   //setup rechit cleaners
   const edm::VParameterSet& cleanerConfs = conf.getParameterSetVector("recHitCleaners");
@@ -94,6 +98,7 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
 PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
 {
   MyFile->cd();
+  clusterTree->Write();
   nTopo_CPU->Write();
   nTopo_GPU->Write();
   sumSeed_CPU->Write();
@@ -289,7 +294,8 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     auto initialClusters = std::make_unique<reco::PFClusterCollection>();
     _initialClustering->buildClusters(rechits, mask, seedable, *initialClusters);
     LOGVERB("PFClusterProducer::produce()") << *_initialClustering;
-   
+    __initialClusters = *initialClusters;  // For TTree
+
     int topoRhCount=0;
     for(auto pfc : *initialClusters)
       {
@@ -333,14 +339,13 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     auto pfClusters = std::make_unique<reco::PFClusterCollection>();
     pfClusters.reset(new reco::PFClusterCollection);
     if (_pfClusterBuilder) {  // if we've defined a re-clustering step execute it
-      std::cout<<"*** Reclustering ECAL ***"<<std::endl;
       _pfClusterBuilder->buildClusters(*initialClusters, seedable, *pfClusters);
     LOGVERB("PFClusterProducer::produce()") << *_pfClusterBuilder;
     } else {
       pfClusters->insert(pfClusters->end(), initialClusters->begin(), initialClusters->end());
     }
     
-    
+    __pfClusters = *pfClusters;  // For TTree  
     for(auto pfc : *pfClusters)
     {
       nRH_perPFCluster_CPU->Fill(pfc.recHitFractions().size());
@@ -374,15 +379,16 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 	  }
     }
     
+    __pfClustersFromCuda = *pfClustersFromCuda;      // For TTree
     for(auto pfc : *pfClustersFromCuda)
       {
   	nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());
 	enPFCluster_GPU->Fill(pfc.energy());
       }
     
-}
+  }
 
-
+  clusterTree->Fill();
   if (_prodInitClusters)
     e.put(std::move(pfClustersFromCuda), "initialClusters");
   e.put(std::move(pfClustersFromCuda));
