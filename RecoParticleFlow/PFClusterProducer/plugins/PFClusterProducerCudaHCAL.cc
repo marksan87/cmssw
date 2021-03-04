@@ -29,6 +29,7 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
   _rechitsLabel = consumes<reco::PFRecHitCollection>(conf.getParameter<edm::InputTag>("recHitsSource"));
 
   //setup TTree
+  clusterTree->Branch("Event", &numEvents);
   clusterTree->Branch("initialClusters", "PFClusterCollection", &__initialClusters);
   clusterTree->Branch("pfClusters", "PFClusterCollection", &__pfClusters);
   clusterTree->Branch("pfClustersFromCuda", "PFClusterCollection", &__pfClustersFromCuda);
@@ -113,8 +114,20 @@ PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
   nPFCluster_GPU->Write();
   enPFCluster_CPU->Write();
   enPFCluster_GPU->Write();
+  pfcEta_CPU->Write();
+  pfcEta_GPU->Write();
+  pfcPhi_CPU->Write();
+  pfcPhi_GPU->Write();
   nRH_perPFCluster_CPU->Write();
   nRH_perPFCluster_GPU->Write();
+  matched_pfcRh_CPU->Write();
+  matched_pfcRh_GPU->Write();
+  matched_pfcEn_CPU->Write();
+  matched_pfcEn_GPU->Write();
+  matched_pfcEta_CPU->Write();
+  matched_pfcEta_GPU->Write();
+  matched_pfcPhi_CPU->Write();
+  matched_pfcPhi_GPU->Write();
   nRh_CPUvsGPU->Write();
   enPFCluster_CPUvsGPU->Write();
   enPFCluster_CPUvsGPU_1d->Write();
@@ -292,7 +305,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      d_cuda_pcRhFracInd,
 					      d_cuda_pcRhFrac
 					      );*/
-
+     /*
      PFClusterCudaHCAL::PFRechitToPFCluster_HCALV2(rh_size, 
 					      d_cuda_pfrh_x,  
 					      d_cuda_pfrh_y,  
@@ -311,8 +324,33 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      d_cuda_fracsum.get(),
 					      d_cuda_rhcount.get()
 					      );
+     */
      
-						
+     PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize(rh_size, 
+     //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_topoParallel(rh_size, 
+     //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_seedingParallel(rh_size, 
+     //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_step1Parallel(rh_size, 
+     //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_step2Parallel(rh_size, 
+     //PFClusterCudaHCAL::PFRechitToPFCluster_HCALV2(rh_size, 
+					      d_cuda_pfrh_x,  
+					      d_cuda_pfrh_y,  
+					      d_cuda_pfrh_z, 
+					      d_cuda_pfrh_energy, 
+					      d_cuda_pfrh_pt2, 	
+					      d_cuda_pfrh_isSeed,
+					      d_cuda_pfrh_topoId,
+					      d_cuda_pfrh_layer, 
+					      d_cuda_pfrh_depth, 
+					      d_cuda_pfNeighEightInd, 
+					      d_cuda_pfNeighFourInd, 
+					      
+					      d_cuda_pcRhFracInd,
+					      d_cuda_pcRhFrac,
+					      d_cuda_fracsum.get(),
+					      d_cuda_rhcount.get()
+					      );
+					
+
   cudaMemcpy(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd  , numbytes_int*100 , cudaMemcpyDeviceToHost);  
   cudaMemcpy(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac  , numbytes_float*100 , cudaMemcpyDeviceToHost);  
   cudaMemcpy(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed  , numbytes_int , cudaMemcpyDeviceToHost);  
@@ -373,6 +411,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   //}
 
 
+  float sumEn_CPU = 0.f;
   if(doComparison)
   {
     std::vector<bool> seedable(rechits->size(), false);
@@ -450,14 +489,29 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
       pfClusters->insert(pfClusters->end(), initialClusters->begin(), initialClusters->end());
     }
 
+    std::cout<<"HCAL pfClusters->size() = "<<pfClusters->size()<<std::endl; 
     __pfClusters = *pfClusters;  // For TTree
     for(auto pfc : *pfClusters)
     {
       nRH_perPFCluster_CPU->Fill(pfc.recHitFractions().size());
-	enPFCluster_CPU->Fill(pfc.energy());
-	for(auto pfcx : *pfClustersFromCuda)
+	  enPFCluster_CPU->Fill(pfc.energy());
+      pfcEta_CPU->Fill(pfc.eta());
+      pfcPhi_CPU->Fill(pfc.phi());
+    sumEn_CPU += pfc.energy();
+    //if (numEvents < 1) std::cout<<pfc.energy()<<std::endl;	
+    for(auto pfcx : *pfClustersFromCuda)
 	  {
 	    if(pfc.seed()==pfcx.seed()){
+          matched_pfcRh_CPU->Fill(pfc.recHitFractions().size());
+          matched_pfcRh_GPU->Fill(pfcx.recHitFractions().size());
+          matched_pfcEn_CPU->Fill(pfc.energy());
+          matched_pfcEn_GPU->Fill(pfcx.energy());
+          matched_pfcEta_CPU->Fill(pfc.eta());
+          matched_pfcEta_GPU->Fill(pfcx.eta());
+          matched_pfcPhi_CPU->Fill(pfc.phi());
+          matched_pfcPhi_GPU->Fill(pfcx.phi());
+
+
 	      nRh_CPUvsGPU->Fill(pfcx.recHitFractions().size(),pfc.recHitFractions().size());
 	      enPFCluster_CPUvsGPU->Fill(pfcx.energy(),pfc.energy());
 	      enPFCluster_CPUvsGPU_1d->Fill((pfcx.energy()-pfc.energy())/pfc.energy());
@@ -491,13 +545,17 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 
     __pfClustersFromCuda = *pfClustersFromCuda;      // For TTree
     for(auto pfc : *pfClustersFromCuda)
-      {
-  	nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());
-	enPFCluster_GPU->Fill(pfc.energy());
-      }
-
+    {
+        nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());
+        enPFCluster_GPU->Fill(pfc.energy());
+        pfcEta_GPU->Fill(pfc.eta());
+        pfcPhi_GPU->Fill(pfc.phi());
+    }
   }
 
+  numEvents++;
+  std::cout<<"Sum En CPU = "<<sumEn_CPU<<std::endl;
+  std::cout<<"***** Filling event "<<numEvents<<std::endl;
   clusterTree->Fill();
   if (_prodInitClusters)
     e.put(std::move(pfClustersFromCuda), "initialClusters");

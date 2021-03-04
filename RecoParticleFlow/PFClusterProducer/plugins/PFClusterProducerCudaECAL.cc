@@ -113,8 +113,20 @@ PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
   nPFCluster_GPU->Write();
   enPFCluster_CPU->Write();
   enPFCluster_GPU->Write();
+  pfcEta_CPU->Write();
+  pfcEta_GPU->Write();
+  pfcPhi_CPU->Write();
+  pfcPhi_GPU->Write();
   nRH_perPFCluster_CPU->Write();
   nRH_perPFCluster_GPU->Write();
+  matched_pfcRh_CPU->Write();
+  matched_pfcRh_GPU->Write();
+  matched_pfcEn_CPU->Write();
+  matched_pfcEn_GPU->Write();
+  matched_pfcEta_CPU->Write();
+  matched_pfcEta_GPU->Write();
+  matched_pfcPhi_CPU->Write();
+  matched_pfcPhi_GPU->Write();
   nRh_CPUvsGPU->Write();
   enPFCluster_CPUvsGPU->Write();
   coordinate->Write();
@@ -227,7 +239,32 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
   cudaCheck(cudaMemcpy(d_cuda_pcRhFrac.get(), h_cuda_pcRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pfRhFracInd.get(), h_cuda_pfRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pcRhFracInd.get(), h_cuda_pcRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
+ 
+  
+  PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize(rechits->size(), 
+  //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_topoParallel(rechits->size(), 
+  //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_seedingParallel(rechits->size(), 
+  //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_step1Parallel(rechits->size(), 
+  //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_step2Parallel(rechits->size(), 
+  //PFClusterCudaECAL::PFRechitToPFCluster_ECALV2(rechits->size(), 
+					      d_cuda_pfrh_x.get(),  
+					      d_cuda_pfrh_y.get(),  
+					      d_cuda_pfrh_z.get(), 
+					      d_cuda_pfrh_energy.get(), 
+					      d_cuda_pfrh_pt2.get(), 	
+					      d_cuda_pfrh_isSeed.get(),
+					      d_cuda_pfrh_topoId.get(),
+					      d_cuda_pfrh_layer.get(), 
+					      d_cuda_pfNeighEightInd.get(), 
+					      d_cuda_pfRhFrac.get(), 
+					      d_cuda_pfRhFracInd.get(), 
+					      d_cuda_pcRhFracInd.get(),
+					      d_cuda_pcRhFrac.get(),
+					      d_cuda_fracsum.get(),
+					      d_cuda_rhcount.get()
+					      );
 
+  /*
   PFClusterCudaECAL::PFRechitToPFCluster_ECALV2(rechits->size(), 
 					      d_cuda_pfrh_x.get(),  
 					      d_cuda_pfrh_y.get(),  
@@ -245,7 +282,8 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 					      d_cuda_fracsum.get(),
 					      d_cuda_rhcount.get()
 					      );
-  /*
+  
+  
   PFClusterCudaECAL::PFRechitToPFCluster_ECALV1(rh_size, 
 					      d_cuda_pfrh_x.get(),  
 					      d_cuda_pfrh_y.get(),  
@@ -260,7 +298,8 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 					      d_cuda_pfRhFracInd.get(), 
 					      d_cuda_pcRhFracInd.get(),
 					      d_cuda_pcRhFrac.get()
-					      );*/
+					      );
+  */
      
     
   cudaMemcpy(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd.get()  , numbytes_int*50 , cudaMemcpyDeviceToHost);  
@@ -349,11 +388,22 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     for(auto pfc : *pfClusters)
     {
       nRH_perPFCluster_CPU->Fill(pfc.recHitFractions().size());
-	enPFCluster_CPU->Fill(pfc.energy());
+	  enPFCluster_CPU->Fill(pfc.energy());
+      pfcEta_CPU->Fill(pfc.eta());
+      pfcPhi_CPU->Fill(pfc.phi());
 	for(auto pfcx : *pfClustersFromCuda)
 	  {
 	    if(pfc.seed()==pfcx.seed()){
-	      nRh_CPUvsGPU->Fill(pfcx.recHitFractions().size(),pfc.recHitFractions().size());
+	      matched_pfcRh_CPU->Fill(pfc.recHitFractions().size());
+          matched_pfcRh_GPU->Fill(pfcx.recHitFractions().size());
+          matched_pfcEn_CPU->Fill(pfc.energy());
+          matched_pfcEn_GPU->Fill(pfcx.energy());
+          matched_pfcEta_CPU->Fill(pfc.eta());
+          matched_pfcEta_GPU->Fill(pfcx.eta());
+          matched_pfcPhi_CPU->Fill(pfc.phi());
+          matched_pfcPhi_GPU->Fill(pfcx.phi());
+          
+          nRh_CPUvsGPU->Fill(pfcx.recHitFractions().size(),pfc.recHitFractions().size());
 	      enPFCluster_CPUvsGPU->Fill(pfcx.energy(),pfc.energy());
 
           if(abs((pfcx.energy()-pfc.energy())/pfc.energy())>0.05){
@@ -381,10 +431,12 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     
     __pfClustersFromCuda = *pfClustersFromCuda;      // For TTree
     for(auto pfc : *pfClustersFromCuda)
-      {
-  	nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());
-	enPFCluster_GPU->Fill(pfc.energy());
-      }
+    {
+  	    nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());
+	    enPFCluster_GPU->Fill(pfc.energy());
+        pfcEta_GPU->Fill(pfc.eta());
+        pfcPhi_GPU->Fill(pfc.phi());
+    }
     
   }
 
