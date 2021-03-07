@@ -241,12 +241,12 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
   cudaCheck(cudaMemcpy(d_cuda_pcRhFracInd.get(), h_cuda_pcRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
  
   
-  PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize(rechits->size(), 
+  //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize(rechits->size(), 
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_topoParallel(rechits->size(), 
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_seedingParallel(rechits->size(), 
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_step1Parallel(rechits->size(), 
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_step2Parallel(rechits->size(), 
-  //PFClusterCudaECAL::PFRechitToPFCluster_ECALV2(rechits->size(), 
+  PFClusterCudaECAL::PFRechitToPFCluster_ECALV2(rechits->size(), 
 					      d_cuda_pfrh_x.get(),  
 					      d_cuda_pfrh_y.get(),  
 					      d_cuda_pfrh_z.get(), 
@@ -359,9 +359,11 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     intTopoCount++;
       }
     }
+    /*
     std::cout<<"ECAL:"<<std::endl;
     std::cout<<"sum rechits          : "<<rh_size<<std::endl;
     std::cout<<"sum rechits in topo  : "<<topoRhCount<<std::endl;
+    */
     nPFCluster_GPU->Fill(intTopoCount);
 
     int seedSumCPU=0;
@@ -409,7 +411,7 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
           if(abs((pfcx.energy()-pfc.energy())/pfc.energy())>0.05){
 
             coordinate->Fill(pfcx.eta(),pfcx.phi());
-            deltaRH->Fill(pfcx.recHitFractions().size() - pfc.recHitFractions().size());
+            deltaRH->Fill((int)pfcx.recHitFractions().size() - (int)pfc.recHitFractions().size());
             deltaEn->Fill(pfcx.energy() - pfc.energy());
             deltaEta->Fill(pfcx.eta() - pfc.eta());
             deltaPhi->Fill(pfcx.phi() - pfc.phi());

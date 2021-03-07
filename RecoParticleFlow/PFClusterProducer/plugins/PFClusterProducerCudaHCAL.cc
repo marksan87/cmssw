@@ -326,12 +326,12 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      );
      */
      
-     PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize(rh_size, 
+     //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize(rh_size, 
      //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_topoParallel(rh_size, 
      //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_seedingParallel(rh_size, 
      //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_step1Parallel(rh_size, 
      //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_step2Parallel(rh_size, 
-     //PFClusterCudaHCAL::PFRechitToPFCluster_HCALV2(rh_size, 
+     PFClusterCudaHCAL::PFRechitToPFCluster_HCALV2(rh_size, 
 					      d_cuda_pfrh_x,  
 					      d_cuda_pfrh_y,  
 					      d_cuda_pfrh_z, 
@@ -443,9 +443,11 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 	intTopoCount++;
       }
     }
+    /*
     std::cout<<"HCAL:"<<std::endl;
     std::cout<<"sum rechits          : "<<rh_size<<std::endl;
     std::cout<<"sum rechits in topo  : "<<topoRhCount<<std::endl;
+    */
     nPFCluster_GPU->Fill(intTopoCount);
     LOGVERB("PFClusterProducer::produce()") << *_initialClustering;
 
@@ -471,10 +473,12 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
     }
     */
     
+    /*
     std::cout<<"sum CPU seeds: "<<seedSumCPU<<std::endl;
     std::cout<<"sum GPU seeds: "<<seedSumGPU<<std::endl;
     //std::cout<<"sum rechits  : "<<rh_size<<std::endl;
     std::cout<<"sum mask  : "<<maskSize<<std::endl;
+    */
 
     sumSeed_CPU->Fill(seedSumCPU);
     sumSeed_GPU->Fill(seedSumGPU);
@@ -489,7 +493,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
       pfClusters->insert(pfClusters->end(), initialClusters->begin(), initialClusters->end());
     }
 
-    std::cout<<"HCAL pfClusters->size() = "<<pfClusters->size()<<std::endl; 
+    //std::cout<<"HCAL pfClusters->size() = "<<pfClusters->size()<<std::endl; 
     __pfClusters = *pfClusters;  // For TTree
     for(auto pfc : *pfClusters)
     {
@@ -518,7 +522,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 	      if(abs((pfcx.energy()-pfc.energy())/pfc.energy())>0.05){
 
 		coordinate->Fill(pfcx.eta(),pfcx.phi());
-	    deltaRH->Fill(pfcx.recHitFractions().size() - pfc.recHitFractions().size());
+	    deltaRH->Fill((int)pfcx.recHitFractions().size() - (int)pfc.recHitFractions().size());
         deltaEn->Fill(pfcx.energy() - pfc.energy());
 	    deltaEta->Fill(pfcx.eta() - pfc.eta());
 	    deltaPhi->Fill(pfcx.phi() - pfc.phi());
@@ -554,8 +558,8 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   }
 
   numEvents++;
-  std::cout<<"Sum En CPU = "<<sumEn_CPU<<std::endl;
-  std::cout<<"***** Filling event "<<numEvents<<std::endl;
+  //std::cout<<"Sum En CPU = "<<sumEn_CPU<<std::endl;
+  //std::cout<<"***** Filling event "<<numEvents<<std::endl;
   clusterTree->Fill();
   if (_prodInitClusters)
     e.put(std::move(pfClustersFromCuda), "initialClusters");
