@@ -39,8 +39,9 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 				int* pcrhind,
 				float* pcrhfracind,
 				float* fracSum,
-				int* rhCount
-				);
+				int* rhCount,
+				float* timer = nullptr 
+                );
 
 void PFRechitToPFCluster_HCAL_serialize(size_t size, 
 				float* pfrh_x,
@@ -57,7 +58,8 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
 				int* pcrhind,
 				float* pcrhfracind,
 				float* fracSum,
-				int* rhCount
+				int* rhCount,
+				float* timer = nullptr 
 				);
 
 void PFRechitToPFCluster_HCAL_serialize_seedingParallel(size_t size, 

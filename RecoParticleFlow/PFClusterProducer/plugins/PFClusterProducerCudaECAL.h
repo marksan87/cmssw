@@ -124,6 +124,8 @@ public:
   TH2F *coordinate = new TH2F("coordinate","coordinate",100,-3,3,100,-3.1415926,3.14159);
   TH1F *layer = new TH1F("layer","layer",7,0,7);
 
+  TH1F *timer = new TH1F("timer", "GPU kernel timer", 1000, 0.0, 1.0);
+
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaECAL);

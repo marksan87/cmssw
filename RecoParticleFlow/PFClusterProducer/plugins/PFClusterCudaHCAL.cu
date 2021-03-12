@@ -184,7 +184,8 @@ namespace PFClusterCudaHCAL {
      //int k = threadIdx.y+blockIdx.y*blockDim.y;
      int k = (threadIdx.y+blockIdx.y*blockDim.y) % nNT;
            
-      if(l<size && k<nNT) {
+      //if(l<size && k<nNT) {
+      if(l<size) {
 
 	while( neigh8_Ind[nNT*l+k] > -1 && pfrh_topoId[l] != pfrh_topoId[neigh8_Ind[nNT*l+k]] && 
 	    ( (pfrh_layer[neigh8_Ind[nNT*l+k]] == 3 && pfrh_energy[neigh8_Ind[nNT*l+k]]>topoEThresholdEE_vec[pfrh_depth[neigh8_Ind[nNT*l+k]]-1]) ||
@@ -220,8 +221,6 @@ namespace PFClusterCudaHCAL {
         //for (int k = 0; k < size; k++) {
         for (int k = 0; k < 8; k++) {
            
-            if(l<size && k<nNT) {
-
             while( neigh8_Ind[nNT*l+k] > -1 && pfrh_topoId[l] != pfrh_topoId[neigh8_Ind[nNT*l+k]] && 
                 ( (pfrh_layer[neigh8_Ind[nNT*l+k]] == 3 && pfrh_energy[neigh8_Ind[nNT*l+k]]>topoEThresholdEE_vec[pfrh_depth[neigh8_Ind[nNT*l+k]]-1]) ||
                   (pfrh_layer[neigh8_Ind[nNT*l+k]] == 1 && pfrh_energy[neigh8_Ind[nNT*l+k]]>topoEThresholdEB_vec[pfrh_depth[neigh8_Ind[nNT*l+k]]-1]) ) &&
@@ -236,9 +235,8 @@ namespace PFClusterCudaHCAL {
                 atomicMax(&pfrh_topoId[l], pfrh_topoId[neigh8_Ind[nNT*l+k]]);
                   }
                 }	
-              }
-         }
-      }
+          }
+        }
    }
  
 __global__ void hcalFastCluster_step1( size_t size,
@@ -477,26 +475,39 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
-				int* rhCount
-				)
-  { 
+				int* rhCount,
+				float* timer
+                )
+  {
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
     //seeding
     if(size>0) seedingKernel_HCAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
     //cudaDeviceSynchronize();
     
     //topoclustering 
-      
+     
       //dim3 gridT( (size+64-1)/64, 1 );
       //dim3 blockT( 64, 8);
       dim3 gridT( (size+64-1)/64, 8 );
       dim3 blockT( 64, 16); // 16 threads in a half-warp
+      cudaEventRecord(start);
       for(int h=0;h<nTopoLoops; h++){
     
       if(size>0) topoKernel_HCALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
       }
-     cudaDeviceSynchronize();
-    
-    
+      //cudaDeviceSynchronize();
+   
+      float milliseconds = 0;
+      if (timer != nullptr)
+      {
+          cudaEventRecord(stop);
+          cudaEventSynchronize(stop);   
+          cudaEventElapsedTime(&milliseconds, start, stop);
+          *timer = milliseconds;
+      }
+
 
       dim3 grid( (size+32-1)/32, (size+32-1)/32 );
       dim3 block( 32, 32);
@@ -525,9 +536,13 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
-				int* rhCount
+				int* rhCount,
+				float* timer
 				)
-  { 
+  {
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
     //seeding
     if(size>0) seedingKernel_HCAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
     //cudaDeviceSynchronize();
@@ -536,16 +551,24 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
       
       //dim3 gridT( (size+64-1)/64, 1 );
       //dim3 blockT( 64, 8);
+      cudaEventRecord(start);
       for(int h=0;h<nTopoLoops; h++){
     
       if(size>0) topoKernel_HCAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
       }
-     cudaDeviceSynchronize();
-    
+      //cudaDeviceSynchronize();
+      float milliseconds = 0;
+      if (timer != nullptr)
+      {
+          cudaEventRecord(stop);
+          cudaEventSynchronize(stop);
+          cudaEventElapsedTime(&milliseconds, start, stop);
+          *timer = milliseconds;
+      }
     
 
-      dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-      dim3 block( 32, 32);
+      //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+      //dim3 block( 32, 32);
 
       if(size>0) hcalFastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
      //cudaDeviceSynchronize();
@@ -580,8 +603,8 @@ void PFRechitToPFCluster_HCAL_serialize_seedingParallel(size_t size,
     
     //topoclustering 
       
-      dim3 gridT( (size+64-1)/64, 1 );
-      dim3 blockT( 64, 8);
+      //dim3 gridT( (size+64-1)/64, 1 );
+      //dim3 blockT( 64, 8);
       for(int h=0;h<nTopoLoops; h++){
       if(size>0) topoKernel_HCAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);
       }
@@ -589,8 +612,8 @@ void PFRechitToPFCluster_HCAL_serialize_seedingParallel(size_t size,
     
     
 
-      dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-      dim3 block( 32, 32);
+      //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+      //dim3 block( 32, 32);
 
       if(size>0) hcalFastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
      //cudaDeviceSynchronize();
@@ -635,8 +658,8 @@ void PFRechitToPFCluster_HCAL_serialize_topoParallel(size_t size,
     
     
 
-      dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-      dim3 block( 32, 32);
+      //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+      //dim3 block( 32, 32);
 
       if(size>0) hcalFastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
      //cudaDeviceSynchronize();
@@ -671,8 +694,8 @@ void PFRechitToPFCluster_HCAL_serialize_step1Parallel(size_t size,
     
     //topoclustering 
       
-      dim3 gridT( (size+64-1)/64, 1 );
-      dim3 blockT( 64, 8);
+      //dim3 gridT( (size+64-1)/64, 1 );
+      //dim3 blockT( 64, 8);
       for(int h=0;h<nTopoLoops; h++){
       if(size>0) topoKernel_HCAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind); 
       }
@@ -716,8 +739,8 @@ void PFRechitToPFCluster_HCAL_serialize_step2Parallel(size_t size,
     
     //topoclustering 
       
-      dim3 gridT( (size+64-1)/64, 1 );
-      dim3 blockT( 64, 8);
+      //dim3 gridT( (size+64-1)/64, 1 );
+      //dim3 blockT( 64, 8);
       for(int h=0;h<nTopoLoops; h++){
       if(size>0) topoKernel_HCAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind); 
       }

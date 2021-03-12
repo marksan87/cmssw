@@ -68,7 +68,7 @@ public:
   reco::PFClusterCollection __pfClustersFromCuda;
 
   TTree *clusterTree = new TTree("clusterTree", "clusterTree");
-  
+
   TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",501,-0.5,500.5);
   TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",501,-0.5,500.5);
 
@@ -125,6 +125,8 @@ public:
 
   TH2F *coordinate = new TH2F("coordinate","coordinate",100,-3,3,100,-3.1415926,3.14159);
   TH1F *layer = new TH1F("layer","layer",7,0,7);
+
+  TH1F *timer = new TH1F("timer", "GPU kernel timer", 1000, 0.0, 1.0);
 
   Int_t numEvents = 0;
 };

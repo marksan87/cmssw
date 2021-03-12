@@ -24,8 +24,9 @@ namespace PFClusterCudaECAL {
 				int* pcrhind,
 				float* pcrhfracind,
 				float* fracSum,
-				int* rhCount
-				);
+				int* rhCount,
+				float* timer = nullptr
+                );
 
  void PFRechitToPFCluster_ECALV1(size_t size, 
 				float* pfrh_x,
@@ -58,8 +59,9 @@ namespace PFClusterCudaECAL {
 				int* pcrhind,
 				float* pcrhfracind,
 				float* fracSum,
-				int* rhCount
-				);
+				int* rhCount,
+				float* timer = nullptr
+                );
 
   void PFRechitToPFCluster_ECAL_serialize_seedingParallel(size_t size, 
 				float* pfrh_x,

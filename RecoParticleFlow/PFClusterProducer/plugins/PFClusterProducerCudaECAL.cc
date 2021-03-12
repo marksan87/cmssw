@@ -136,7 +136,7 @@ PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
   deltaEn->Write();
   deltaEta->Write();
   deltaPhi->Write();
-
+  timer->Write();
   // MyFile->Close();
   delete MyFile;
 }
@@ -216,10 +216,12 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 	h_cuda_pfNeighEightInd[8*p+z] = nh;
 	z++;
       }
+    
     for(int l=z; l<8; l++)
       {
 	h_cuda_pfNeighEightInd[8*p+l] = -1;
       }
+    
     p++;
   }//end of rechit loop  
   //std::cout<<"p: "<<p<<std::endl;
@@ -240,7 +242,7 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
   cudaCheck(cudaMemcpy(d_cuda_pfRhFracInd.get(), h_cuda_pfRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpy(d_cuda_pcRhFracInd.get(), h_cuda_pcRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
  
-  
+  float* elapsedTime = new float(0.0);
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize(rechits->size(), 
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_topoParallel(rechits->size(), 
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_seedingParallel(rechits->size(), 
@@ -261,7 +263,9 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 					      d_cuda_pcRhFracInd.get(),
 					      d_cuda_pcRhFrac.get(),
 					      d_cuda_fracsum.get(),
-					      d_cuda_rhcount.get()
+//					      d_cuda_rhcount.get()
+					      d_cuda_rhcount.get(),
+                          elapsedTime
 					      );
 
   /*
@@ -301,11 +305,26 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 					      );
   */
      
-    
+  std::cout<<"Elapsed time (ms) for ECAL topo clustering: "<<*elapsedTime<<std::endl;
+  timer->Fill(*elapsedTime); 
+  delete elapsedTime;
   cudaMemcpy(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd.get()  , numbytes_int*50 , cudaMemcpyDeviceToHost);  
   cudaMemcpy(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac.get()  , numbytes_float*50 , cudaMemcpyDeviceToHost);  
   cudaMemcpy(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
+  cudaMemcpy(h_cuda_pfrh_topoId.data()    , d_cuda_pfrh_topoId.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
+  cudaMemcpy(h_cuda_pfNeighEightInd.data()    , d_cuda_pfNeighEightInd.get()  , numbytes_int*8 , cudaMemcpyDeviceToHost); 
+
   
+  if(doComparison){
+      for(unsigned int i=0;i<rh_size;i++){
+        int topoIda=h_cuda_pfrh_topoId[i];
+        for(unsigned int j=0;j<8;j++){
+          if(h_cuda_pfNeighEightInd[i*8+j]>-1 && h_cuda_pfrh_topoId[h_cuda_pfNeighEightInd[i*8+j]]!=topoIda) std::cout<<"ECAL HAS DIFFERENT TOPOID "<<i<<"  "<<j<<"  "<<topoIda<<"  "<<h_cuda_pfrh_topoId[h_cuda_pfNeighEightInd[i*8+j]]<<std::endl;
+        }
+      }
+  }
+   
+
   auto pfClustersFromCuda = std::make_unique<reco::PFClusterCollection>();
   pfClustersFromCuda.reset(new reco::PFClusterCollection);
   for(int n=0; n<(int)rh_size; n++){

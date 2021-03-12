@@ -32,7 +32,7 @@ namespace PFClusterCudaECAL {
   __constant__ int nNeigh = 8;
   __constant__ int maxSize = 50;
 
- 
+  int nTopoLoops = 18; 
    
  __global__ void seedingKernel_ECAL(
      				    size_t size, 
@@ -126,8 +126,73 @@ namespace PFClusterCudaECAL {
     }//loop over neumann neighbourhood clustering end
   }
   
-  
+  __global__ void topoKernel_ECALV2( 
+                  size_t size,
+                  float* pfrh_energy,
+                  int* pfrh_topoId,
+                  int* pfrh_layer,
+                  int* neigh8_Ind
+                  ) {
+
+      int l = threadIdx.x+blockIdx.x*blockDim.x;
+      int k = (threadIdx.y+blockIdx.y*blockDim.y) % nNeigh;
+
+      //if(l<size && k<8) {   
+      if(l<size) {   
+      while( neigh8_Ind[nNeigh*l+k] > -1 && pfrh_topoId[l] != pfrh_topoId[neigh8_Ind[nNeigh*l+k]] && 
+         (
+          ((pfrh_layer[l] == -2 && pfrh_energy[l]>topoEThresholdEE) || 
+           (pfrh_layer[l] == -1 && pfrh_energy[l]>topoEThresholdEB) )
+          &&
+          ((pfrh_layer[neigh8_Ind[nNeigh*l+k]] == -2 && pfrh_energy[neigh8_Ind[nNeigh*l+k]]>topoEThresholdEE) || 
+           (pfrh_layer[neigh8_Ind[nNeigh*l+k]] == -1 && pfrh_energy[neigh8_Ind[nNeigh*l+k]]>topoEThresholdEB) )
+          )
+         )
+        {
+          if(pfrh_topoId[l] > pfrh_topoId[neigh8_Ind[nNeigh*l+k]]){
+        atomicMax(&pfrh_topoId[neigh8_Ind[nNeigh*l+k]],pfrh_topoId[l]);
+          }
+          if(pfrh_topoId[l] < pfrh_topoId[neigh8_Ind[nNeigh*l+k]]){
+        atomicMax(&pfrh_topoId[l], pfrh_topoId[neigh8_Ind[nNeigh*l+k]]);
+          }       
+        }
+      }                        
+  }
+
   __global__ void topoKernel_ECAL_serialize( 
+                  size_t size,
+                  float* pfrh_energy,
+                  int* pfrh_topoId,
+                  int* pfrh_layer,
+                  int* neigh8_Ind
+                  ) {
+
+      for (int l = 0; l < size; l++) {
+        for (int k = 0; k < 8; k++) {
+
+          while( neigh8_Ind[nNeigh*l+k] > -1 && pfrh_topoId[l] != pfrh_topoId[neigh8_Ind[nNeigh*l+k]] && 
+             (
+              ((pfrh_layer[l] == -2 && pfrh_energy[l]>topoEThresholdEE) || 
+               (pfrh_layer[l] == -1 && pfrh_energy[l]>topoEThresholdEB) )
+              &&
+              ((pfrh_layer[neigh8_Ind[nNeigh*l+k]] == -2 && pfrh_energy[neigh8_Ind[nNeigh*l+k]]>topoEThresholdEE) || 
+               (pfrh_layer[neigh8_Ind[nNeigh*l+k]] == -1 && pfrh_energy[neigh8_Ind[nNeigh*l+k]]>topoEThresholdEB) )
+              )
+             )
+            {
+              if(pfrh_topoId[l] > pfrh_topoId[neigh8_Ind[nNeigh*l+k]]){
+            atomicMax(&pfrh_topoId[neigh8_Ind[nNeigh*l+k]],pfrh_topoId[l]);
+              }
+              if(pfrh_topoId[l] < pfrh_topoId[neigh8_Ind[nNeigh*l+k]]){
+            atomicMax(&pfrh_topoId[l], pfrh_topoId[neigh8_Ind[nNeigh*l+k]]);
+              }       
+            }
+         }
+      } 
+  }
+
+  
+  __global__ void topoKernel_ECAL_serialize_old( 
 				  size_t size,
 				  float* pfrh_energy,
 				  int* pfrh_topoId,
@@ -366,17 +431,40 @@ __global__ void fastCluster_step2_serialize( size_t size,
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
-				int* rhCount
+				int* rhCount,
+                float* timer
 				)
   { 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
     //seeding
     if(size>0) seedingKernel_ECAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
     //cudaDeviceSynchronize();
       
     // for(int a=0;a<16;a++){
-    if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
+    //if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
     //}	    
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
+
+    dim3 gridT( (size+64-1)/64, 1 );
+    dim3 blockT( 64, 8);
+    //dim3 gridT( (size+64-1)/64, 8 );
+    //dim3 blockT( 64, 16);
+    cudaEventRecord(start);
+    //for(int h=0; h<18; h++){  
+    for(int h=0; h<nTopoLoops; h++){  
+      if(size>0) topoKernel_ECALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);        
+    }
+
+    float milliseconds = 0;
+    if (timer != NULL)
+    {
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&milliseconds, start, stop);
+        *timer = milliseconds;
+    }
 
     dim3 grid( (size+32-1)/32, (size+32-1)/32 );
     dim3 block( 32, 32);
@@ -384,10 +472,10 @@ __global__ void fastCluster_step2_serialize( size_t size,
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
      if(size>0) fastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 
     if(size>0) fastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
     
    
   }
@@ -407,28 +495,42 @@ __global__ void fastCluster_step2_serialize( size_t size,
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
-				int* rhCount
+				int* rhCount,
+                float* timer
 				)
   { 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    
     //seeding
     if(size>0) seedingKernel_ECAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
     //cudaDeviceSynchronize();
-      
-    // for(int a=0;a<16;a++){
-    if(size>0) topoKernel_ECAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
-    //}	    
-    cudaDeviceSynchronize();
+     
+    cudaEventRecord(start);
+    for(int h=0; h < nTopoLoops; h++){
+        if(size>0) topoKernel_ECAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
+    }	    
+    //cudaDeviceSynchronize();
+    float milliseconds = 0;
+    if (timer != NULL)
+    {
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&milliseconds, start, stop);
+        *timer = milliseconds;
+    }
 
-    dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-    dim3 block( 32, 32);
+    //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+    //dim3 block( 32, 32);
 
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
      if(size>0) fastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     cudaDeviceSynchronize();
+     //cudaDeviceSynchronize();
 
     if(size>0) fastCluster_step2_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
     
    
   }
@@ -460,8 +562,8 @@ __global__ void fastCluster_step2_serialize( size_t size,
     //}	    
     cudaDeviceSynchronize();
 
-    dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-    dim3 block( 32, 32);
+    //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+    //dim3 block( 32, 32);
 
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
@@ -501,8 +603,8 @@ __global__ void fastCluster_step2_serialize( size_t size,
     //}	    
     cudaDeviceSynchronize();
 
-    dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-    dim3 block( 32, 32);
+    //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
+    //dim3 block( 32, 32);
 
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
