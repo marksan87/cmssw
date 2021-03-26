@@ -27,6 +27,7 @@
 
 #include <memory>
 
+
 class PFClusterProducerCudaHCAL : public edm::stream::EDProducer<> {
   typedef RecHitTopologicalCleanerBase RHCB;
   typedef InitialClusteringStepBase ICSB;
@@ -58,7 +59,8 @@ public:
   std::unique_ptr<PFClusterBuilderBase> _pfClusterBuilder;
   std::unique_ptr<PFCPositionCalculatorBase> _positionReCalc;
   std::unique_ptr<PFCPositionCalculatorBase> _allCellsPosCalc;
-  std::unique_ptr<PFCPositionCalculatorBase> _allCellsPosCalcCuda;
+  std::unique_ptr<PFCPositionCalculatorBase> _positionCalc;
+  std::unique_ptr<PFCPositionCalculatorBase> _allCellsPositionCalc;
   std::unique_ptr<PFClusterEnergyCorrectorBase> _energyCorrector;
 
   TFile *MyFile = new TFile("EventHCAL.root","recreate");
@@ -116,6 +118,7 @@ public:
   TH1F *enPFCluster_CPUvsGPU_1d = new TH1F("enPFCluster_CPUvsGPU_1d","enPFCluster_CPUvsGPU_1d",400,-2,2);
 
   bool doComparison=true;
+  //bool doComparison=false;
 
   TH1F *deltaSumSeed  = new TH1F("deltaSumSeed", "sumSeed_{GPU} - sumSeed_{CPU}", 201, -100.5, 100.5);
   TH1F *deltaRH  = new TH1F("deltaRH", "nRH_{GPU} - nRH_{CPU}", 41, -20.5, 20.5);

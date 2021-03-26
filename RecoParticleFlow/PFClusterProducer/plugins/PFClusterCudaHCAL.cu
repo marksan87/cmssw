@@ -10,88 +10,193 @@
 #include "RecoParticleFlow/PFClusterProducer/plugins/PFClusterCudaHCAL.h"
 #include <Eigen/Dense>
 
+#define GPU_DEBUG_HCAL
+
+constexpr int sizeof_float = sizeof(float);
+constexpr int sizeof_int = sizeof(int);
+
 namespace PFClusterCudaHCAL {
 
-  // THE ART OF HARDCODING
-  // these numbers should be copied over during initialization
-  __constant__ float showerSigma = 10;
+  __constant__ float showerSigma;
+  __constant__ float recHitEnergyNormEB_vec[4];
+  __constant__ float recHitEnergyNormEE_vec[7];
+  __constant__ float minFracToKeep;
+
+  __constant__ float seedEThresholdEB_vec[4];
+  __constant__ float seedEThresholdEE_vec[7];
+  __constant__ float seedPt2ThresholdEB;
+  __constant__ float seedPt2ThresholdEE;
+
+  __constant__ float topoEThresholdEB_vec[4];
+  __constant__ float topoEThresholdEE_vec[7];
   
-  __constant__ float recHitEnergyNormEB_1 = 0.1;
-  __constant__ float recHitEnergyNormEB_2 = 0.2;
-  __constant__ float recHitEnergyNormEB_3 = 0.3;
-  __constant__ float recHitEnergyNormEB_4 = 0.3;
-  __constant__ float recHitEnergyNormEE_1 = 0.1;
-  __constant__ float recHitEnergyNormEE_2_7 = 0.2;
+  __constant__ int nNT = 8;  // Number of neighbors considered for topo clustering
+  __constant__ int nNeigh;
+  __constant__ int maxSize;
   
-  __constant__ float minFracToKeep = 0.0000001;
+  int nTopoLoops = 100;
+  //int nTopoLoops = 35;
 
-  __constant__ float seedEThresholdEB_1 = 0.125;
-  __constant__ float seedEThresholdEB_2 = 0.25;
-  __constant__ float seedEThresholdEB_3 = 0.35;
-  __constant__ float seedEThresholdEB_4 = 0.35;
-  __constant__ float seedEThresholdEE_1 = 0.1375;
-  __constant__ float seedEThresholdEE_2_7 = 0.275;
 
-  __constant__ float seedPt2ThresholdEB = 0.;
-  __constant__ float seedPt2hresholdEE = 0.;
+  void initializeCudaConstants(float h_showerSigma,
+                               const float (&h_recHitEnergyNormEB_vec)[4],
+                               const float (&h_recHitEnergyNormEE_vec)[7],
+                               float h_minFracToKeep,
+                               const float (&h_seedEThresholdEB_vec)[4],
+                               const float (&h_seedEThresholdEE_vec)[7],
+                               float h_seedPt2ThresholdEB,
+                               float h_seedPt2ThresholdEE,
+                               const float (&h_topoEThresholdEB_vec)[4],
+                               const float (&h_topoEThresholdEE_vec)[7],
+                               int   h_nNeigh,
+                               int   h_maxSize
+                           )
+  {
+     cudaCheck(cudaMemcpyToSymbolAsync(showerSigma, &h_showerSigma, sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     float val = 0.;
+     cudaMemcpyFromSymbol(&val, showerSigma, sizeof_float);
+     std::cout<<"showerSigma read from symbol: "<<val<<std::endl;
+#endif
+     
+     cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEB_vec, &h_recHitEnergyNormEB_vec, 4*sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     float val4[4];
+     cudaMemcpyFromSymbol(&val4, recHitEnergyNormEB_vec, 4*sizeof_float);
+     std::cout<<"recHitEnergyNormEB_vec read from symbol: ";
+     for (int i = 0; i < 4; i++) {std::cout<<val4[i]<<" ";}
+     std::cout<<std::endl;
+#endif
 
-  __constant__ float topoEThresholdEB_1 = 0.1;
-  __constant__ float topoEThresholdEB_2 = 0.2;
-  __constant__ float topoEThresholdEB_3 = 0.3;
-  __constant__ float topoEThresholdEB_4 = 0.3;
-  __constant__ float topoEThresholdEE_1 = 0.1;
-  __constant__ float topoEThresholdEE_2_7 = 0.2;
-  __constant__ float topoEThresholdEB_vec[4] = {0.1,0.2,0.3,0.3};
-  __constant__ float topoEThresholdEE_vec[7] = {0.1,0.2,0.2,0.2,0.2,0.2,0.2};
-  
+     cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEE_vec, &h_recHitEnergyNormEE_vec, 7*sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     float val7[7];
+     cudaMemcpyFromSymbol(&val7, recHitEnergyNormEE_vec, 7*sizeof_float);
+     std::cout<<"recHitEnergyNormEE_vec read from symbol: ";
+     for (int i = 0; i < 7; i++) {std::cout<<val7[i]<<" ";}
+     std::cout<<std::endl;
+#endif
 
-  __constant__ int nNeighTopo = 8;
-  __constant__ int nNT = 8;
-  __constant__ int nNeigh = 4;
-  __constant__ int maxSize = 100;
-  
-  //int nTopoLoops = 100; // 35;
-  int nTopoLoops = 35;
+     cudaCheck(cudaMemcpyToSymbolAsync(minFracToKeep, &h_minFracToKeep, sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     val = 0.;
+     cudaMemcpyFromSymbol(&val, minFracToKeep, sizeof_float);
+     std::cout<<"minFracToKeep read from symbol: "<<val<<std::endl;
+#endif
 
+     cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB_vec, &h_seedEThresholdEB_vec, 4*sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     cudaMemcpyFromSymbol(&val4, seedEThresholdEB_vec, 4*sizeof_float);
+     std::cout<<"seedEThresholdEB_vec read from symbol: ";
+     for (int i = 0; i < 4; i++) {std::cout<<val4[i]<<" ";}
+     std::cout<<std::endl;
+#endif
+
+     cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEE_vec, &h_seedEThresholdEE_vec, 7*sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     cudaMemcpyFromSymbol(&val7, seedEThresholdEE_vec, 7*sizeof_float);
+     std::cout<<"seedEThresholdEE_vec read from symbol: ";
+     for (int i = 0; i < 7; i++) {std::cout<<val7[i]<<" ";}
+     std::cout<<std::endl;
+#endif
+
+     cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEB, &h_seedPt2ThresholdEB, sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     val = 0.;
+     cudaMemcpyFromSymbol(&val, seedPt2ThresholdEB, sizeof_float);
+     std::cout<<"seedPt2ThresholdEB read from symbol: "<<val<<std::endl;
+#endif
+
+     cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEE, &h_seedPt2ThresholdEE, sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     val = 0.;
+     cudaMemcpyFromSymbol(&val, seedPt2ThresholdEE, sizeof_float);
+     std::cout<<"seedPt2ThresholdEE read from symbol: "<<val<<std::endl;
+#endif
+
+     cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEB_vec, &h_topoEThresholdEB_vec, 4*sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     cudaMemcpyFromSymbol(&val4, topoEThresholdEB_vec, 4*sizeof_float);
+     std::cout<<"topoEThresholdEB_vec read from symbol: ";
+     for (int i = 0; i < 4; i++) {std::cout<<val4[i]<<" ";}
+     std::cout<<std::endl;
+#endif
+
+     cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEE_vec, &h_topoEThresholdEE_vec, 7*sizeof_float));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     cudaMemcpyFromSymbol(&val7, topoEThresholdEE_vec, 7*sizeof_float);
+     std::cout<<"topoEThresholdEE_vec read from symbol: ";
+     for (int i = 0; i < 7; i++) {std::cout<<val7[i]<<" ";}
+     std::cout<<std::endl;
+#endif
+
+     cudaCheck(cudaMemcpyToSymbolAsync(nNeigh, &h_nNeigh, sizeof_int));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     int ival = 0;
+     cudaMemcpyFromSymbol(&ival, nNeigh, sizeof_int);
+     std::cout<<"nNeigh read from symbol: "<<ival<<std::endl;
+#endif
+
+     cudaCheck(cudaMemcpyToSymbolAsync(maxSize, &h_maxSize, sizeof_int));
+#ifdef GPU_DEBUG_HCAL
+     // Read back the value
+     ival = 0;
+     cudaMemcpyFromSymbol(&ival, maxSize, sizeof_int);
+     std::cout<<"maxSize read from symbol: "<<ival<<std::endl;
+#endif
+  }
 
  __global__ void seedingKernel_HCAL(
      				    size_t size, 
-				    double* pfrh_energy,
-				    double* pfrh_pt2,
+				    const double* __restrict__ pfrh_energy,
+				    const double* __restrict__ pfrh_pt2,
 				    int*   pfrh_isSeed,
 				    int*   pfrh_topoId,
-				    int*   pfrh_layer,
-				    int*   pfrh_depth,
-				    int*   neigh4_Ind
+				    const int* __restrict__ pfrh_layer,
+				    const int* __restrict__ pfrh_depth,
+				    const int* __restrict__ neigh4_Ind
 				    ) {
 
    int i = threadIdx.x+blockIdx.x*blockDim.x;
 
    if(i<size) {        
-     if( ( pfrh_layer[i] == 1 && 
-	   pfrh_depth[i] == 1 &&
-	   pfrh_energy[i]>seedEThresholdEB_1 && 
-	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-	 ( pfrh_layer[i] == 1 && 
-	   pfrh_depth[i] == 2 &&
-	   pfrh_energy[i]>seedEThresholdEB_2 && 
-	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-	 ( pfrh_layer[i] == 1 && 
-	   pfrh_depth[i] == 3 &&
-	   pfrh_energy[i]>seedEThresholdEB_3 && 
-	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-	 ( pfrh_layer[i] == 1 && 
-	   pfrh_depth[i] == 4 &&
-	   pfrh_energy[i]>seedEThresholdEB_4 && 
-	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-	 ( pfrh_layer[i] == 3  && 
-	   pfrh_depth[i] == 1  &&
-	   pfrh_energy[i]>seedEThresholdEE_1 && 
-	   pfrh_pt2[i]>seedPt2hresholdEE)   ||
-	 ( pfrh_layer[i] == 3  && 
-	   pfrh_depth[i] > 1   &&
-	   pfrh_energy[i]>seedEThresholdEE_2_7 && 
-	   pfrh_pt2[i]>seedPt2hresholdEE))
+//     if( ( pfrh_layer[i] == 1 && 
+//	   pfrh_depth[i] == 1 &&
+//	   pfrh_energy[i]>seedEThresholdEB_1 && 
+//	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//	 ( pfrh_layer[i] == 1 && 
+//	   pfrh_depth[i] == 2 &&
+//	   pfrh_energy[i]>seedEThresholdEB_2 && 
+//	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//	 ( pfrh_layer[i] == 1 && 
+//	   pfrh_depth[i] == 3 &&
+//	   pfrh_energy[i]>seedEThresholdEB_3 && 
+//	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//	 ( pfrh_layer[i] == 1 && 
+//	   pfrh_depth[i] == 4 &&
+//	   pfrh_energy[i]>seedEThresholdEB_4 && 
+//	   pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//	 ( pfrh_layer[i] == 3  && 
+//	   pfrh_depth[i] == 1  &&
+//	   pfrh_energy[i]>seedEThresholdEE_1 && 
+//	   pfrh_pt2[i]>seedPt2ThresholdEE)   ||
+//	 ( pfrh_layer[i] == 3  && 
+//	   pfrh_depth[i] > 1   &&
+//	   pfrh_energy[i]>seedEThresholdEE_2_7 && 
+//	   pfrh_pt2[i]>seedPt2ThresholdEE))
+     if ( (pfrh_layer[i] == 1 && pfrh_energy[i]>seedEThresholdEB_vec[pfrh_depth[i] - 1] && pfrh_pt2[i]>seedPt2ThresholdEB) || 
+          (pfrh_layer[i] == 3 && pfrh_energy[i]>seedEThresholdEE_vec[pfrh_depth[i] - 1] && pfrh_pt2[i]>seedPt2ThresholdEE) )
        {
 	 pfrh_isSeed[i]=1;		 
 	 for(int k=0; k<nNeigh; k++){
@@ -114,42 +219,44 @@ namespace PFClusterCudaHCAL {
   
  __global__ void seedingKernel_HCAL_serialize(
      				    size_t size, 
-				    double* pfrh_energy,
-				    double* pfrh_pt2,
+				    const double* __restrict__ pfrh_energy,
+				    const double* __restrict__ pfrh_pt2,
 				    int*   pfrh_isSeed,
 				    int*   pfrh_topoId,
-				    int*   pfrh_layer,
-				    int*   pfrh_depth,
-				    int*   neigh4_Ind
+				    const int* __restrict__ pfrh_layer,
+				    const int* __restrict__ pfrh_depth,
+				    const int* __restrict__ neigh4_Ind
 				    ) {
 
    //int i = threadIdx.x+blockIdx.x*blockDim.x;
    for (int i = 0; i < size; i++) {
        if(i<size) {        
-         if( ( pfrh_layer[i] == 1 && 
-           pfrh_depth[i] == 1 &&
-           pfrh_energy[i]>seedEThresholdEB_1 && 
-           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-         ( pfrh_layer[i] == 1 && 
-           pfrh_depth[i] == 2 &&
-           pfrh_energy[i]>seedEThresholdEB_2 && 
-           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-         ( pfrh_layer[i] == 1 && 
-           pfrh_depth[i] == 3 &&
-           pfrh_energy[i]>seedEThresholdEB_3 && 
-           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-         ( pfrh_layer[i] == 1 && 
-           pfrh_depth[i] == 4 &&
-           pfrh_energy[i]>seedEThresholdEB_4 && 
-           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
-         ( pfrh_layer[i] == 3  && 
-           pfrh_depth[i] == 1  &&
-           pfrh_energy[i]>seedEThresholdEE_1 && 
-           pfrh_pt2[i]>seedPt2hresholdEE)   ||
-         ( pfrh_layer[i] == 3  && 
-           pfrh_depth[i] > 1   &&
-           pfrh_energy[i]>seedEThresholdEE_2_7 && 
-           pfrh_pt2[i]>seedPt2hresholdEE))
+//         if( ( pfrh_layer[i] == 1 && 
+//           pfrh_depth[i] == 1 &&
+//           pfrh_energy[i]>seedEThresholdEB_1 && 
+//           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//         ( pfrh_layer[i] == 1 && 
+//           pfrh_depth[i] == 2 &&
+//           pfrh_energy[i]>seedEThresholdEB_2 && 
+//           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//         ( pfrh_layer[i] == 1 && 
+//           pfrh_depth[i] == 3 &&
+//           pfrh_energy[i]>seedEThresholdEB_3 && 
+//           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//         ( pfrh_layer[i] == 1 && 
+//           pfrh_depth[i] == 4 &&
+//           pfrh_energy[i]>seedEThresholdEB_4 && 
+//           pfrh_pt2[i]>seedPt2ThresholdEB ) ||
+//         ( pfrh_layer[i] == 3  && 
+//           pfrh_depth[i] == 1  &&
+//           pfrh_energy[i]>seedEThresholdEE_1 && 
+//           pfrh_pt2[i]>seedPt2ThresholdEE)   ||
+//         ( pfrh_layer[i] == 3  && 
+//           pfrh_depth[i] > 1   &&
+//           pfrh_energy[i]>seedEThresholdEE_2_7 && 
+//           pfrh_pt2[i]>seedPt2ThresholdEE))
+     if ( (pfrh_layer[i] == 1 && pfrh_energy[i]>seedEThresholdEB_vec[pfrh_depth[i] - 1] && pfrh_pt2[i]>seedPt2ThresholdEB) || 
+          (pfrh_layer[i] == 3 && pfrh_energy[i]>seedEThresholdEE_vec[pfrh_depth[i] - 1] && pfrh_pt2[i]>seedPt2ThresholdEE) )
            {
          pfrh_isSeed[i]=1;		 
          for(int k=0; k<nNeigh; k++){
@@ -173,11 +280,11 @@ namespace PFClusterCudaHCAL {
 
    __global__ void topoKernel_HCALV2( 
 				  size_t size,
-				  double* pfrh_energy,
+				  const double* __restrict__ pfrh_energy,
 				  int* pfrh_topoId,
-				  int* pfrh_layer,
-				  int* pfrh_depth,
-				  int* neigh8_Ind
+				  const int* __restrict__ pfrh_layer,
+				  const int* __restrict__ pfrh_depth,
+				  const int* __restrict__ neigh8_Ind
 				  ) {
      
      int l = threadIdx.x+blockIdx.x*blockDim.x;
@@ -207,11 +314,11 @@ namespace PFClusterCudaHCAL {
 
    __global__ void topoKernel_HCAL_serialize( 
 				  size_t size,
-				  double* pfrh_energy,
+				  const double* __restrict__ pfrh_energy,
 				  int* pfrh_topoId,
-				  int* pfrh_layer,
-				  int* pfrh_depth,
-				  int* neigh8_Ind
+				  const int* __restrict__ pfrh_layer,
+				  const int* __restrict__ pfrh_depth,
+				  const int* __restrict__ neigh8_Ind
 				  ) {
      
      //int l = threadIdx.x+blockIdx.x*blockDim.x;
@@ -240,14 +347,14 @@ namespace PFClusterCudaHCAL {
    }
  
 __global__ void hcalFastCluster_step1( size_t size,
-					     float* pfrh_x,
-					     float* pfrh_y,
-					     float* pfrh_z,
-					     double* pfrh_energy,
+					     const float* __restrict__ pfrh_x,
+					     const float* __restrict__ pfrh_y,
+					     const float* __restrict__ pfrh_z,
+					     const double* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
-					     int* pfrh_layer,
-				             int* pfrh_depth,
+					     const int* __restrict__ pfrh_layer,
+				         const int* __restrict__ pfrh_depth,
 					     float* pcrhfrac,
 					     int* pcrhfracind,
 					     float* fracSum,
@@ -269,12 +376,14 @@ __global__ void hcalFastCluster_step1( size_t size,
       float d2 = dist2 / (showerSigma*showerSigma);
       float fraction = -1.;
 
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+      else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+//      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
+//      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
+//      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
+//      if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
+//      if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
+//      if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
 	  
       if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
@@ -288,14 +397,14 @@ __global__ void hcalFastCluster_step1( size_t size,
 
  
 __global__ void hcalFastCluster_step1_serialize( size_t size,
-					     float* pfrh_x,
-					     float* pfrh_y,
-					     float* pfrh_z,
-					     double* pfrh_energy,
+					     const float* __restrict__ pfrh_x,
+					     const float* __restrict__ pfrh_y,
+					     const float* __restrict__ pfrh_z,
+					     const double* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
-					     int* pfrh_layer,
-				             int* pfrh_depth,
+					     const int* __restrict__ pfrh_layer,
+				         const int* __restrict__ pfrh_depth,
 					     float* pcrhfrac,
 					     int* pcrhfracind,
 					     float* fracSum,
@@ -319,12 +428,14 @@ __global__ void hcalFastCluster_step1_serialize( size_t size,
               float d2 = dist2 / (showerSigma*showerSigma);
               float fraction = -1.;
 
-              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
-              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
-              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
-              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
-              if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
-              if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
+              if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+              else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+//              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
+//              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
+//              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
+//              if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
+//              if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
+//              if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
               
               if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
@@ -339,14 +450,14 @@ __global__ void hcalFastCluster_step1_serialize( size_t size,
   }
 
 __global__ void hcalFastCluster_step2( size_t size,
-					     float* pfrh_x,
-					     float* pfrh_y,
-					     float* pfrh_z,
-					     double* pfrh_energy,
+					     const float* __restrict__ pfrh_x,
+					     const float* __restrict__ pfrh_y,
+					     const float* __restrict__ pfrh_z,
+					     const double* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
-					     int* pfrh_layer,
-				             int* pfrh_depth,
+					     const int* __restrict__ pfrh_layer,
+				         const int* __restrict__ pfrh_depth,
 					     float* pcrhfrac,
 					     int* pcrhfracind,
 					     float* fracSum,
@@ -372,12 +483,14 @@ __global__ void hcalFastCluster_step2( size_t size,
 	float d2 = dist2 / (showerSigma*showerSigma);
 	float fraction = -1.;
 
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
+    if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+    else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+//	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
+//	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
+//	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
+//	if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
+//	if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
+//	if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
 	  
 	
 	if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
@@ -397,14 +510,14 @@ __global__ void hcalFastCluster_step2( size_t size,
 
 
 __global__ void hcalFastCluster_step2_serialize( size_t size,
-					     float* pfrh_x,
-					     float* pfrh_y,
-					     float* pfrh_z,
-					     double* pfrh_energy,
+					     const float* __restrict__ pfrh_x,
+					     const float* __restrict__ pfrh_y,
+					     const float* __restrict__ pfrh_z,
+					     const double* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
-					     int* pfrh_layer,
-				             int* pfrh_depth,
+					     const int* __restrict__ pfrh_layer,
+				         const int* __restrict__ pfrh_depth,
 					     float* pcrhfrac,
 					     int* pcrhfracind,
 					     float* fracSum,
@@ -432,12 +545,14 @@ __global__ void hcalFastCluster_step2_serialize( size_t size,
             float d2 = dist2 / (showerSigma*showerSigma);
             float fraction = -1.;
 
-            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
-            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
-            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
-            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
-            if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
-            if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
+            if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+            else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+//            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_1 * expf(-0.5 * d2); }
+//            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 2) { fraction = pfrh_energy[i] / recHitEnergyNormEB_2 * expf(-0.5 * d2); }
+//            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEB_3 * expf(-0.5 * d2); }
+//            if(pfrh_layer[j] == 1 && pfrh_depth[j] == 4) { fraction = pfrh_energy[i] / recHitEnergyNormEB_4 * expf(-0.5 * d2); }
+//            if(pfrh_layer[j] == 3 && pfrh_depth[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEE_1 * expf(-0.5 * d2); }
+//            if(pfrh_layer[j] == 3 && pfrh_depth[j] > 1 ) { fraction = pfrh_energy[i] / recHitEnergyNormEE_2_7 * expf(-0.5 * d2); }
               
             
             if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
@@ -460,18 +575,17 @@ __global__ void hcalFastCluster_step2_serialize( size_t size,
 
 
 void PFRechitToPFCluster_HCALV2(size_t size, 
-				float* pfrh_x, 
-				float* pfrh_y, 
-				float* pfrh_z, 
-				double* pfrh_energy, 
-				double* pfrh_pt2,    				
+				const float* __restrict__ pfrh_x, 
+				const float* __restrict__ pfrh_y, 
+				const float* __restrict__ pfrh_z, 
+				const double* __restrict__ pfrh_energy, 
+				const double* __restrict__ pfrh_pt2,    				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* pfrh_depth, 
-				int* neigh8_Ind, 
-				int* neigh4_Ind, 				
-				
+				const int* __restrict__ pfrh_layer, 
+				const int* __restrict__ pfrh_depth, 
+			    const int* __restrict__ neigh8_Ind,
+                const int* __restrict__ neigh4_Ind,	
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
@@ -479,26 +593,31 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 				float* timer
                 )
   {
+#ifdef GPU_DEBUG_HCAL
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
+#endif
     //seeding
     if(size>0) seedingKernel_HCAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
     //cudaDeviceSynchronize();
     
     //topoclustering 
      
-      //dim3 gridT( (size+64-1)/64, 1 );
-      //dim3 blockT( 64, 8);
-      dim3 gridT( (size+64-1)/64, 8 );
-      dim3 blockT( 64, 16); // 16 threads in a half-warp
+      dim3 gridT( (size+64-1)/64, 1 );
+      dim3 blockT( 64, 8);
+      //dim3 gridT( (size+64-1)/64, 8 );
+      //dim3 blockT( 64, 16); // 16 threads in a half-warp
+#ifdef GPU_DEBUG_HCAL
       cudaEventRecord(start);
+#endif
       for(int h=0;h<nTopoLoops; h++){
     
       if(size>0) topoKernel_HCALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
       }
       //cudaDeviceSynchronize();
    
+#ifdef GPU_DEBUG_HCAL
       float milliseconds = 0;
       if (timer != nullptr)
       {
@@ -507,7 +626,7 @@ void PFRechitToPFCluster_HCALV2(size_t size,
           cudaEventElapsedTime(&milliseconds, start, stop);
           *timer = milliseconds;
       }
-
+#endif
 
       dim3 grid( (size+32-1)/32, (size+32-1)/32 );
       dim3 block( 32, 32);
@@ -521,18 +640,17 @@ void PFRechitToPFCluster_HCALV2(size_t size,
   }
 
 void PFRechitToPFCluster_HCAL_serialize(size_t size, 
-				float* pfrh_x, 
-				float* pfrh_y, 
-				float* pfrh_z, 
-				double* pfrh_energy, 
-				double* pfrh_pt2,    				
+				const float* __restrict__ pfrh_x, 
+				const float* __restrict__ pfrh_y, 
+				const float* __restrict__ pfrh_z, 
+				const double* __restrict__ pfrh_energy, 
+				const double* __restrict__ pfrh_pt2,    				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* pfrh_depth, 
-				int* neigh8_Ind, 
-				int* neigh4_Ind, 				
-				
+				const int* __restrict__ pfrh_layer, 
+				const int* __restrict__ pfrh_depth, 
+			    const int* __restrict__ neigh8_Ind,
+                const int* __restrict__ neigh4_Ind,	
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
@@ -540,9 +658,11 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
 				float* timer
 				)
   {
+#ifdef GPU_DEBUG_HCAL
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
+#endif
     //seeding
     if(size>0) seedingKernel_HCAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
     //cudaDeviceSynchronize();
@@ -551,12 +671,15 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
       
       //dim3 gridT( (size+64-1)/64, 1 );
       //dim3 blockT( 64, 8);
+#ifdef GPU_DEBUG_HCAL
       cudaEventRecord(start);
+#endif
       for(int h=0;h<nTopoLoops; h++){
     
       if(size>0) topoKernel_HCAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
       }
       //cudaDeviceSynchronize();
+#ifdef GPU_DEBUG_HCAL
       float milliseconds = 0;
       if (timer != nullptr)
       {
@@ -565,7 +688,7 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
           cudaEventElapsedTime(&milliseconds, start, stop);
           *timer = milliseconds;
       }
-    
+#endif    
 
       //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
       //dim3 block( 32, 32);
@@ -579,18 +702,17 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
   }
 
 void PFRechitToPFCluster_HCAL_serialize_seedingParallel(size_t size, 
-				float* pfrh_x, 
-				float* pfrh_y, 
-				float* pfrh_z, 
-				double* pfrh_energy, 
-				double* pfrh_pt2,    				
+				const float* __restrict__ pfrh_x, 
+				const float* __restrict__ pfrh_y, 
+				const float* __restrict__ pfrh_z, 
+				const double* __restrict__ pfrh_energy, 
+				const double* __restrict__ pfrh_pt2,    				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* pfrh_depth, 
-				int* neigh8_Ind, 
-				int* neigh4_Ind, 				
-				
+				const int* __restrict__ pfrh_layer, 
+				const int* __restrict__ pfrh_depth, 
+			    const int* __restrict__ neigh8_Ind,
+                const int* __restrict__ neigh4_Ind,	
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
@@ -624,18 +746,17 @@ void PFRechitToPFCluster_HCAL_serialize_seedingParallel(size_t size,
   }
 
 void PFRechitToPFCluster_HCAL_serialize_topoParallel(size_t size, 
-				float* pfrh_x, 
-				float* pfrh_y, 
-				float* pfrh_z, 
-				double* pfrh_energy, 
-				double* pfrh_pt2,    				
+				const float* __restrict__ pfrh_x, 
+				const float* __restrict__ pfrh_y, 
+				const float* __restrict__ pfrh_z, 
+				const double* __restrict__ pfrh_energy, 
+				const double* __restrict__ pfrh_pt2,    				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* pfrh_depth, 
-				int* neigh8_Ind, 
-				int* neigh4_Ind, 				
-				
+				const int* __restrict__ pfrh_layer, 
+				const int* __restrict__ pfrh_depth, 
+			    const int* __restrict__ neigh8_Ind,
+                const int* __restrict__ neigh4_Ind,	
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
@@ -670,18 +791,17 @@ void PFRechitToPFCluster_HCAL_serialize_topoParallel(size_t size,
   }
 
 void PFRechitToPFCluster_HCAL_serialize_step1Parallel(size_t size, 
-				float* pfrh_x, 
-				float* pfrh_y, 
-				float* pfrh_z, 
-				double* pfrh_energy, 
-				double* pfrh_pt2,    				
+				const float* __restrict__ pfrh_x, 
+				const float* __restrict__ pfrh_y, 
+				const float* __restrict__ pfrh_z, 
+				const double* __restrict__ pfrh_energy, 
+				const double* __restrict__ pfrh_pt2,    				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* pfrh_depth, 
-				int* neigh8_Ind, 
-				int* neigh4_Ind, 				
-				
+				const int* __restrict__ pfrh_layer, 
+				const int* __restrict__ pfrh_depth, 
+			    const int* __restrict__ neigh8_Ind,
+                const int* __restrict__ neigh4_Ind,	
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
@@ -715,18 +835,17 @@ void PFRechitToPFCluster_HCAL_serialize_step1Parallel(size_t size,
   }
 
 void PFRechitToPFCluster_HCAL_serialize_step2Parallel(size_t size, 
-				float* pfrh_x, 
-				float* pfrh_y, 
-				float* pfrh_z, 
-				double* pfrh_energy, 
-				double* pfrh_pt2,    				
+				const float* __restrict__ pfrh_x, 
+				const float* __restrict__ pfrh_y, 
+				const float* __restrict__ pfrh_z, 
+				const double* __restrict__ pfrh_energy, 
+				const double* __restrict__ pfrh_pt2,    				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* pfrh_depth, 
-				int* neigh8_Ind, 
-				int* neigh4_Ind, 				
-				
+				const int* __restrict__ pfrh_layer, 
+				const int* __restrict__ pfrh_depth, 
+			    const int* __restrict__ neigh8_Ind,
+                const int* __restrict__ neigh4_Ind,	
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,

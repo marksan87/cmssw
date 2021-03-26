@@ -5,6 +5,7 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
+#include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/device_unique_ptr.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/host_unique_ptr.h"
 
@@ -21,16 +22,24 @@
 #define LOGDRESSED(x) LogDebug(x)
 #endif
 
+// Uncomment to enable GPU debugging
+//#define GPU_DEBUG_ECAL
+
+// Uncomment to fill TTrees
+//#define DEBUG_ECAL_TREES
+
 PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& conf)
   : 
 
   _prodInitClusters(conf.getUntrackedParameter<bool>("prodInitialClusters", false)) {
   _rechitsLabel = consumes<reco::PFRecHitCollection>(conf.getParameter<edm::InputTag>("recHitsSource"));
 
+#ifdef DEBUG_ECAL_TREES
   //setup TTree
   clusterTree->Branch("initialClusters", "PFClusterCollection", &__initialClusters);
   clusterTree->Branch("pfClusters", "PFClusterCollection", &__pfClusters);
   clusterTree->Branch("pfClustersFromCuda", "PFClusterCollection", &__pfClustersFromCuda);
+#endif
 
   //setup rechit cleaners
   const edm::VParameterSet& cleanerConfs = conf.getParameterSetVector("recHitCleaners");
@@ -82,7 +91,90 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
   //bool doComparison = false;
 
   
+  // Initialize Cuda device constant values
+  // Read values from parameter set 
+  //float showerSigma = 1.5;
+  float showerSigma = (float)pfcConf.getParameter<double>("showerSigma");
+  float recHitEnergyNormEB = -1, recHitEnergyNormEE = -1;
+  const auto recHitEnergyNormConf = pfcConf.getParameterSetVector("recHitEnergyNorms");
+  for (const auto& pset : recHitEnergyNormConf)
+  {
+    const std::string& det = pset.getParameter<std::string>("detector");
+    if (det == std::string("ECAL_BARREL"))
+      recHitEnergyNormEB = (float)pset.getParameter<double>("recHitEnergyNorm");
+    else if (det == std::string("ECAL_ENDCAP"))
+      recHitEnergyNormEE = (float)pset.getParameter<double>("recHitEnergyNorm");
+    else
+      std::cout<<"Unknown detector when parsing recHitEnergyNorm: "<<det<<std::endl;
+  }
+  //float recHitEnergyNormEB = 0.08;
+  //float recHitEnergyNormEE = 0.3;
+  //float minFracToKeep = 0.0000001;
+  float minFracToKeep = (float)pfcConf.getParameter<double>("minFractionToKeep"); 
 
+  float seedEThresholdEB = -1, seedEThresholdEE = -1, seedPt2ThresholdEB = -1, seedPt2ThresholdEE = -1;
+  const auto seedThresholdConf = sfConf.getParameterSetVector("thresholdsByDetector");
+  for (const auto& pset : seedThresholdConf) 
+  {
+    const std::string& det = pset.getParameter<std::string>("detector");
+    if (det == std::string("ECAL_BARREL")) {
+      seedEThresholdEB = (float)pset.getParameter<double>("seedingThreshold");
+      seedPt2ThresholdEB = (float)(pset.getParameter<double>("seedingThresholdPt") * pset.getParameter<double>("seedingThresholdPt"));
+
+    }
+    else if (det == std::string("ECAL_ENDCAP")) {
+      seedEThresholdEE = (float)pset.getParameter<double>("seedingThreshold");
+      seedPt2ThresholdEE = (float)(pset.getParameter<double>("seedingThresholdPt") * pset.getParameter<double>("seedingThresholdPt"));
+    }
+    else
+      std::cout<<"Unknown detector when parsing seedFinder: "<<det<<std::endl;
+  }
+
+  //float seedEThresholdEB = 0.23;
+  //float seedEThresholdEE = 0.6;
+  //float seedPt2ThresholdEB = 0.0;
+  //float seedPt2ThresholdEE = 0.0225;
+
+  float topoEThresholdEB = -1, topoEThresholdEE = -1;
+
+  const auto topoThresholdConf = initConf.getParameterSetVector("thresholdsByDetector");
+  for (const auto& pset : topoThresholdConf) 
+  {
+    const std::string& det = pset.getParameter<std::string>("detector");
+    if (det == std::string("ECAL_BARREL")) {
+      topoEThresholdEB = (float)pset.getParameter<double>("gatheringThreshold");
+    }
+    else if (det == std::string("ECAL_ENDCAP")) {
+      topoEThresholdEE = (float)pset.getParameter<double>("gatheringThreshold");
+    }
+    else
+      std::cout<<"Unknown detector when parsing initClusteringStep: "<<det<<std::endl;
+  }
+  //float topoEThresholdEB = 0.08;
+  //float topoEThresholdEE = 0.3;
+
+  int nNeigh = sfConf.getParameter<int>("nNeighbours");
+  //int nNeigh = 8;
+  int maxSize = 50;
+  
+  PFClusterCudaECAL::initializeCudaConstants(showerSigma,
+                                             recHitEnergyNormEB,
+                                             recHitEnergyNormEE,
+                                             minFracToKeep,
+                                             seedEThresholdEB,
+                                             seedEThresholdEE,
+                                             seedPt2ThresholdEB,
+                                             seedPt2ThresholdEE,
+                                             topoEThresholdEB,
+                                             topoEThresholdEE,
+                                             nNeigh,
+                                             maxSize);
+  
+  //auto constants = new PFClusterCudaECAL::CudaECALConstants(3.14);
+  //PFClusterCudaECAL::initializeConstants(constants);
+
+  //cudaMemcpyToSymbol(PFClusterCudaECAL::showerSigma, &showerSigma, numbytes_float);
+  //cudaMemcpyToSymbol(showerSigma, &h_showerSigma, numbytes_float);
 
 
 
@@ -98,7 +190,9 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
 PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
 {
   MyFile->cd();
+#ifdef DEBUG_ECAL_TREES
   clusterTree->Write();
+#endif
   nTopo_CPU->Write();
   nTopo_GPU->Write();
   sumSeed_CPU->Write();
@@ -226,21 +320,21 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
   }//end of rechit loop  
   //std::cout<<"p: "<<p<<std::endl;
   
-  cudaCheck(cudaMemcpy(d_cuda_fracsum.get(), h_cuda_fracsum.data(), numbytes_float, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_rhcount.get(), h_cuda_rhcount.data(), numbytes_int, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_x.get(), h_cuda_pfrh_x.data(), numbytes_float, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_y.get(), h_cuda_pfrh_y.data(), numbytes_float, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_z.get(), h_cuda_pfrh_z.data(), numbytes_float, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_energy.get(), h_cuda_pfrh_energy.data(), numbytes_float, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_pt2.get(), h_cuda_pfrh_pt2.data(), numbytes_float, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_topoId.get(), h_cuda_pfrh_topoId.data(), numbytes_int, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_isSeed.get(), h_cuda_pfrh_isSeed.data(), numbytes_int, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfrh_layer.get(), h_cuda_pfrh_layer.data(), numbytes_int, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfNeighEightInd.get(), h_cuda_pfNeighEightInd.data(), numbytes_int*8, cudaMemcpyHostToDevice));  
-  cudaCheck(cudaMemcpy(d_cuda_pfRhFrac.get(), h_cuda_pfRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pcRhFrac.get(), h_cuda_pcRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pfRhFracInd.get(), h_cuda_pfRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(d_cuda_pcRhFracInd.get(), h_cuda_pcRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_fracsum.get(), h_cuda_fracsum.data(), numbytes_float, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_rhcount.get(), h_cuda_rhcount.data(), numbytes_int, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_x.get(), h_cuda_pfrh_x.data(), numbytes_float, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_y.get(), h_cuda_pfrh_y.data(), numbytes_float, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_z.get(), h_cuda_pfrh_z.data(), numbytes_float, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_energy.get(), h_cuda_pfrh_energy.data(), numbytes_float, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_pt2.get(), h_cuda_pfrh_pt2.data(), numbytes_float, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_topoId.get(), h_cuda_pfrh_topoId.data(), numbytes_int, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_isSeed.get(), h_cuda_pfrh_isSeed.data(), numbytes_int, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_layer.get(), h_cuda_pfrh_layer.data(), numbytes_int, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfNeighEightInd.get(), h_cuda_pfNeighEightInd.data(), numbytes_int*8, cudaMemcpyHostToDevice));  
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfRhFrac.get(), h_cuda_pfRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pcRhFrac.get(), h_cuda_pcRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfRhFracInd.get(), h_cuda_pfRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
+  cudaCheck(cudaMemcpyAsync(d_cuda_pcRhFracInd.get(), h_cuda_pcRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
  
   float* elapsedTime = new float(0.0);
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize(rechits->size(), 
@@ -304,17 +398,18 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 					      d_cuda_pcRhFrac.get()
 					      );
   */
-     
+#ifdef GPU_DEBUG_ECAL  
   std::cout<<"Elapsed time (ms) for ECAL topo clustering: "<<*elapsedTime<<std::endl;
   timer->Fill(*elapsedTime); 
+#endif
   delete elapsedTime;
-  cudaMemcpy(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd.get()  , numbytes_int*50 , cudaMemcpyDeviceToHost);  
-  cudaMemcpy(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac.get()  , numbytes_float*50 , cudaMemcpyDeviceToHost);  
-  cudaMemcpy(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
-  cudaMemcpy(h_cuda_pfrh_topoId.data()    , d_cuda_pfrh_topoId.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
-  cudaMemcpy(h_cuda_pfNeighEightInd.data()    , d_cuda_pfNeighEightInd.get()  , numbytes_int*8 , cudaMemcpyDeviceToHost); 
+  cudaMemcpyAsync(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd.get()  , numbytes_int*50 , cudaMemcpyDeviceToHost);  
+  cudaMemcpyAsync(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac.get()  , numbytes_float*50 , cudaMemcpyDeviceToHost);  
+  cudaMemcpyAsync(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
+  cudaMemcpyAsync(h_cuda_pfrh_topoId.data()    , d_cuda_pfrh_topoId.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
+  cudaMemcpyAsync(h_cuda_pfNeighEightInd.data()    , d_cuda_pfNeighEightInd.get()  , numbytes_int*8 , cudaMemcpyDeviceToHost); 
 
-  
+  /* 
   if(doComparison){
       for(unsigned int i=0;i<rh_size;i++){
         int topoIda=h_cuda_pfrh_topoId[i];
@@ -323,7 +418,7 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
         }
       }
   }
-   
+  */
 
   auto pfClustersFromCuda = std::make_unique<reco::PFClusterCollection>();
   pfClustersFromCuda.reset(new reco::PFClusterCollection);
@@ -426,14 +521,18 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
           
           nRh_CPUvsGPU->Fill(pfcx.recHitFractions().size(),pfc.recHitFractions().size());
 	      enPFCluster_CPUvsGPU->Fill(pfcx.energy(),pfc.energy());
-
-          if(abs((pfcx.energy()-pfc.energy())/pfc.energy())>0.05){
-
-            coordinate->Fill(pfcx.eta(),pfcx.phi());
             deltaRH->Fill((int)pfcx.recHitFractions().size() - (int)pfc.recHitFractions().size());
             deltaEn->Fill(pfcx.energy() - pfc.energy());
             deltaEta->Fill(pfcx.eta() - pfc.eta());
             deltaPhi->Fill(pfcx.phi() - pfc.phi());
+
+          if(abs((pfcx.energy()-pfc.energy())/pfc.energy())>0.05){
+
+            coordinate->Fill(pfcx.eta(),pfcx.phi());
+//            deltaRH->Fill((int)pfcx.recHitFractions().size() - (int)pfc.recHitFractions().size());
+//            deltaEn->Fill(pfcx.energy() - pfc.energy());
+//            deltaEta->Fill(pfcx.eta() - pfc.eta());
+//            deltaPhi->Fill(pfcx.phi() - pfc.phi());
 
             for(auto rhf: pfc.recHitFractions()){
               if(rhf.fraction()==1)layer->Fill(rhf.recHitRef()->depth());
@@ -461,7 +560,9 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     
   }
 
+#ifdef DEBUG_ECAL_TREES
   clusterTree->Fill();
+#endif
   if (_prodInitClusters)
     e.put(std::move(pfClustersFromCuda), "initialClusters");
   e.put(std::move(pfClustersFromCuda));
