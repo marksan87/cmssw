@@ -5,6 +5,8 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
+#include "FWCore/Framework/interface/ESHandle.h"
+
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/device_unique_ptr.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/host_unique_ptr.h"
@@ -30,8 +32,8 @@
 
 PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& conf)
   : 
-
   _prodInitClusters(conf.getUntrackedParameter<bool>("prodInitialClusters", false)) {
+
   _rechitsLabel = consumes<reco::PFRecHitCollection>(conf.getParameter<edm::InputTag>("recHitsSource"));
 
 #ifdef DEBUG_ECAL_TREES
@@ -251,6 +253,7 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
   edm::Handle<reco::PFRecHitCollection> rechits;
   e.getByToken(_rechitsLabel, rechits);
   
+  
   _initialClustering->updateEvent(e);
 
   std::vector<bool> mask(rechits->size(), true);
@@ -319,7 +322,15 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
     p++;
   }//end of rechit loop  
   //std::cout<<"p: "<<p<<std::endl;
-  
+ 
+#ifdef GPU_DEBUG_ECAL
+  float milliseconds = 0;
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+  cudaEventRecord(start);
+#endif
+
   cudaCheck(cudaMemcpyAsync(d_cuda_fracsum.get(), h_cuda_fracsum.data(), numbytes_float, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpyAsync(d_cuda_rhcount.get(), h_cuda_rhcount.data(), numbytes_int, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_x.get(), h_cuda_pfrh_x.data(), numbytes_float, cudaMemcpyHostToDevice));
@@ -335,7 +346,16 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
   cudaCheck(cudaMemcpyAsync(d_cuda_pcRhFrac.get(), h_cuda_pcRhFrac.data(), numbytes_float*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpyAsync(d_cuda_pfRhFracInd.get(), h_cuda_pfRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpyAsync(d_cuda_pcRhFracInd.get(), h_cuda_pcRhFracInd.data(), numbytes_int*50, cudaMemcpyHostToDevice));
- 
+  
+#ifdef GPU_DEBUG_ECAL
+  cudaEventRecord(stop);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&milliseconds, start, stop);
+  std::cout<<"(ECAL) Copy memory to device: "<<milliseconds<<" ms"<<std::endl;
+
+  cudaEventRecord(start);
+#endif
+  
   float* elapsedTime = new float(0.0);
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize(rechits->size(), 
   //PFClusterCudaECAL::PFRechitToPFCluster_ECAL_serialize_topoParallel(rechits->size(), 
@@ -357,57 +377,38 @@ auto d_cuda_pcRhFracInd = cms::cuda::make_device_unique<int[]>(numbytes_int*50, 
 					      d_cuda_pcRhFracInd.get(),
 					      d_cuda_pcRhFrac.get(),
 					      d_cuda_fracsum.get(),
-//					      d_cuda_rhcount.get()
 					      d_cuda_rhcount.get(),
                           elapsedTime
 					      );
 
-  /*
-  PFClusterCudaECAL::PFRechitToPFCluster_ECALV2(rechits->size(), 
-					      d_cuda_pfrh_x.get(),  
-					      d_cuda_pfrh_y.get(),  
-					      d_cuda_pfrh_z.get(), 
-					      d_cuda_pfrh_energy.get(), 
-					      d_cuda_pfrh_pt2.get(), 	
-					      d_cuda_pfrh_isSeed.get(),
-					      d_cuda_pfrh_topoId.get(),
-					      d_cuda_pfrh_layer.get(), 
-					      d_cuda_pfNeighEightInd.get(), 
-					      d_cuda_pfRhFrac.get(), 
-					      d_cuda_pfRhFracInd.get(), 
-					      d_cuda_pcRhFracInd.get(),
-					      d_cuda_pcRhFrac.get(),
-					      d_cuda_fracsum.get(),
-					      d_cuda_rhcount.get()
-					      );
-  
-  
-  PFClusterCudaECAL::PFRechitToPFCluster_ECALV1(rh_size, 
-					      d_cuda_pfrh_x.get(),  
-					      d_cuda_pfrh_y.get(),  
-					      d_cuda_pfrh_z.get(), 
-					      d_cuda_pfrh_energy.get(), 
-					      d_cuda_pfrh_pt2.get(), 	
-					      d_cuda_pfrh_isSeed.get(),
-					      d_cuda_pfrh_topoId.get(),
-					      d_cuda_pfrh_layer.get(), 
-					      d_cuda_pfNeighEightInd.get(), 
-					      d_cuda_pfRhFrac.get(), 
-					      d_cuda_pfRhFracInd.get(), 
-					      d_cuda_pcRhFracInd.get(),
-					      d_cuda_pcRhFrac.get()
-					      );
-  */
-#ifdef GPU_DEBUG_ECAL  
+#ifdef GPU_DEBUG_ECAL
+  cudaEventRecord(stop);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&milliseconds, start, stop);
+  std::cout<<"(ECAL) GPU clustering: "<<milliseconds<<" ms"<<std::endl;
+#endif
+/*
   std::cout<<"Elapsed time (ms) for ECAL topo clustering: "<<*elapsedTime<<std::endl;
   timer->Fill(*elapsedTime); 
-#endif
+*/
   delete elapsedTime;
+
+#ifdef GPU_DEBUG_ECAL
+  cudaEventRecord(start);
+#endif 
+
   cudaMemcpyAsync(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd.get()  , numbytes_int*50 , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac.get()  , numbytes_float*50 , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pfrh_topoId.data()    , d_cuda_pfrh_topoId.get()  , numbytes_int , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pfNeighEightInd.data()    , d_cuda_pfNeighEightInd.get()  , numbytes_int*8 , cudaMemcpyDeviceToHost); 
+
+#ifdef GPU_DEBUG_ECAL
+  cudaEventRecord(stop);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&milliseconds, start, stop);
+  std::cout<<"(ECAL) Copy results from GPU: "<<milliseconds<<" ms"<<std::endl;
+#endif
 
   /* 
   if(doComparison){

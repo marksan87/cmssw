@@ -24,7 +24,7 @@
 #endif
 
 // Uncomment to enable GPU debugging
-#define GPU_DEBUG_HCAL
+//#define GPU_DEBUG_HCAL
 
 // Uncomment to fill TTrees
 //#define DEBUG_HCAL_TREES
@@ -359,7 +359,15 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 
     p++;
   }//end of rechit loop  
-  
+ 
+#ifdef GPU_DEBUG_HCAL
+  float milliseconds = 0;
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+
+  cudaEventRecord(start);
+#endif
 
   cudaCheck(cudaMemcpyAsync(d_cuda_fracsum.get(), h_cuda_fracsum.data(), numbytes_float, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpyAsync(d_cuda_rhcount.get(), h_cuda_rhcount.data(), numbytes_int, cudaMemcpyHostToDevice));
@@ -382,45 +390,14 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaCheck(cudaMemcpyAsync(d_cuda_pfRhFracInd, h_cuda_pfRhFracInd.data(), numbytes_int*100, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpyAsync(d_cuda_pcRhFracInd, h_cuda_pcRhFracInd.data(), numbytes_int*100, cudaMemcpyHostToDevice));
 
-  /*  PFClusterCudaHCAL::PFRechitToPFCluster_HCALV1(rh_size, 
-					      d_cuda_pfrh_x,  
-					      d_cuda_pfrh_y,  
-					      d_cuda_pfrh_z, 
-					      d_cuda_pfrh_energy, 
-					      d_cuda_pfrh_pt2, 	
-					      d_cuda_pfrh_isSeed,
-					      d_cuda_pfrh_topoId,
-					      d_cuda_pfrh_layer, 
-					      d_cuda_pfrh_depth, 
-					      d_cuda_pfNeighEightInd, 
-					      d_cuda_pfNeighFourInd, 
-					      d_cuda_pfRhFrac, 
-					      d_cuda_pfRhFracInd, 
-					      d_cuda_pcRhFracInd,
-					      d_cuda_pcRhFrac
-					      );*/
-     /*
-     PFClusterCudaHCAL::PFRechitToPFCluster_HCALV2(rh_size, 
-					      d_cuda_pfrh_x,  
-					      d_cuda_pfrh_y,  
-					      d_cuda_pfrh_z, 
-					      d_cuda_pfrh_energy, 
-					      d_cuda_pfrh_pt2, 	
-					      d_cuda_pfrh_isSeed,
-					      d_cuda_pfrh_topoId,
-					      d_cuda_pfrh_layer, 
-					      d_cuda_pfrh_depth, 
-					      d_cuda_pfNeighEightInd, 
-					      d_cuda_pfNeighFourInd, 
-					      
-					      d_cuda_pcRhFracInd,
-					      d_cuda_pcRhFrac,
-					      d_cuda_fracsum.get(),
-					      d_cuda_rhcount.get()
-					      );
-     */
+#ifdef GPU_DEBUG_HCAL
+  cudaEventRecord(stop);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&milliseconds, start, stop);
+  std::cout<<"(HCAL) Copy memory to device: "<<milliseconds<<" ms"<<std::endl;
+  cudaEventRecord(start);
+#endif
      
-
      float* elapsedTime = new float(0.0); 
      //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize(rh_size, 
      //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize_topoParallel(rh_size, 
@@ -449,16 +426,34 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
                           );
 
 #ifdef GPU_DEBUG_HCAL
-  std::cout<<"Elapsed time (ms) for HCAL topo clustering: "<<*elapsedTime<<std::endl;
-  timer->Fill(*elapsedTime);
+  cudaEventRecord(stop);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&milliseconds, start, stop);
+  std::cout<<"(HCAL) GPU clustering: "<<milliseconds<<" ms"<<std::endl;
 #endif
+  
+  //std::cout<<"Elapsed time (ms) for HCAL topo clustering: "<<*elapsedTime<<std::endl;
+  //timer->Fill(*elapsedTime);
   delete elapsedTime;
+
+#ifdef GPU_DEBUG_HCAL
+  cudaEventRecord(start);
+#endif
+
   cudaMemcpyAsync(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd  , numbytes_int*100 , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac  , numbytes_float*100 , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed  , numbytes_int , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pfrh_topoId.data()    , d_cuda_pfrh_topoId  , numbytes_int , cudaMemcpyDeviceToHost);  
   cudaMemcpyAsync(h_cuda_pfNeighEightInd.data()    , d_cuda_pfNeighEightInd  , numbytes_int*8 , cudaMemcpyDeviceToHost);  
   
+#ifdef GPU_DEBUG_HCAL
+  cudaEventRecord(stop);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&milliseconds, start, stop);
+  std::cout<<"(HCAL) Copy results from GPU: "<<milliseconds<<" ms"<<std::endl;
+#endif
+
+
   if(doComparison){ 
   for(unsigned int i=0;i<rh_size;i++){
     int topoIda=h_cuda_pfrh_topoId[i];

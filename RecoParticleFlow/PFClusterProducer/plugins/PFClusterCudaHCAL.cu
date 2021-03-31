@@ -10,7 +10,7 @@
 #include "RecoParticleFlow/PFClusterProducer/plugins/PFClusterCudaHCAL.h"
 #include <Eigen/Dense>
 
-#define GPU_DEBUG_HCAL
+//#define GPU_DEBUG_HCAL
 
 constexpr int sizeof_float = sizeof(float);
 constexpr int sizeof_int = sizeof(int);

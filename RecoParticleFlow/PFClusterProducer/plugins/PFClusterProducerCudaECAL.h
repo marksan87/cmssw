@@ -25,7 +25,10 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
+#include "CondFormats/DataRecord/interface/EcalPFRecHitThresholdsRcd.h"
+
 #include <memory>
+
 
 class PFClusterProducerCudaECAL : public edm::stream::EDProducer<> {
   typedef RecHitTopologicalCleanerBase RHCB;
@@ -48,7 +51,8 @@ public:
   std::vector< std::vector<double> > theThresh;
   edm::EDGetTokenT<reco::PFRecHitCollection> _rechitsLabel;
   edm::EDGetTokenT< std::vector<double> > _trash;
-  
+ 
+
   // options
   const bool _prodInitClusters;
   // the actual algorithm
@@ -111,10 +115,10 @@ public:
   TH1F *matched_pfcPhi_GPU = new TH1F("matched_pfcPhi_GPU", "matching seed pfcPhi_GPU", 100, -3.1415926, 3.1415926);
 
   TH2F *nRh_CPUvsGPU = new TH2F("nRh_CPUvsGPU","nRh_CPUvsGPU",101,-0.5,100.5,101,-0.5,100.5);
-  TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",500,0,500,500,0,500);
+  TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",50,0,500,50,0,500);
 
-  bool doComparison=true;
-  //bool doComparison=false;
+  //bool doComparison=true;
+  bool doComparison=false;
 
   TH1F *deltaSumSeed  = new TH1F("deltaSumSeed", "sumSeed_{GPU} - sumSeed_{CPU}", 201, -100.5, 100.5);
   TH1F *deltaRH  = new TH1F("deltaRH", "nRH_{GPU} - nRH_{CPU}", 41, -20.5, 20.5);
