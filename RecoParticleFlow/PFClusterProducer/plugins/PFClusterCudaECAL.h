@@ -39,7 +39,7 @@ namespace PFClusterCudaECAL {
 				float* pcrhfracind,
 				float* fracSum,
 				int* rhCount,
-				float* timer = nullptr
+				float (&timer)[4]
                 );
 
  void PFRechitToPFCluster_ECALV1(size_t size, 
@@ -76,79 +76,6 @@ namespace PFClusterCudaECAL {
 				int* rhCount,
 				float* timer = nullptr
                 );
-
-  void PFRechitToPFCluster_ECAL_serialize_seedingParallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const float* __restrict__ pfrh_energy,	
-				const float* __restrict__ pfrh_pt2, 
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhind, 
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount
-				);
-
-  void PFRechitToPFCluster_ECAL_serialize_topoParallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const float* __restrict__ pfrh_energy,	
-				const float* __restrict__ pfrh_pt2, 
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhind, 
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount
-				);
-
-  void PFRechitToPFCluster_ECAL_serialize_step1Parallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const float* __restrict__ pfrh_energy,	
-				const float* __restrict__ pfrh_pt2, 
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhind, 
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount
-				);
-
-  void PFRechitToPFCluster_ECAL_serialize_step2Parallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const float* __restrict__ pfrh_energy,	
-				const float* __restrict__ pfrh_pt2, 
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhind, 
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount
-				);
-
 
 }  // namespace cudavectors
 

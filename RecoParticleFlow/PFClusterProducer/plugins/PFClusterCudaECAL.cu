@@ -11,7 +11,7 @@
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 
-//#define GPU_DEBUG_ECAL
+#define DEBUG_GPU_ECAL
 
 constexpr int sizeof_float = sizeof(float);
 constexpr int sizeof_int = sizeof(int);
@@ -52,7 +52,7 @@ namespace PFClusterCudaECAL {
                            )
   {
      cudaCheck(cudaMemcpyToSymbolAsync(showerSigma, &h_showerSigma, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      float val = 0.;
      cudaMemcpyFromSymbol(&val, showerSigma, sizeof_float);
@@ -60,7 +60,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEB, &h_recHitEnergyNormEB, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, recHitEnergyNormEB, sizeof_float);
@@ -68,7 +68,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEE, &h_recHitEnergyNormEE, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, recHitEnergyNormEE, sizeof_float);
@@ -76,7 +76,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(minFracToKeep, &h_minFracToKeep, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, minFracToKeep, sizeof_float);
@@ -84,7 +84,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB, &h_seedEThresholdEB, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, seedEThresholdEB, sizeof_float);
@@ -92,7 +92,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEE, &h_seedEThresholdEE, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, seedEThresholdEE, sizeof_float);
@@ -100,7 +100,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEB, &h_seedPt2ThresholdEB, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, seedPt2ThresholdEB, sizeof_float);
@@ -108,7 +108,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEE, &h_seedPt2ThresholdEE, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, seedPt2ThresholdEE, sizeof_float);
@@ -116,7 +116,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEB, &h_topoEThresholdEB, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, topoEThresholdEB, sizeof_float);
@@ -124,7 +124,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEE, &h_topoEThresholdEE, sizeof_float)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
      cudaMemcpyFromSymbol(&val, topoEThresholdEE, sizeof_float);
@@ -132,7 +132,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(nNeigh, &h_nNeigh, sizeof_int)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      int ival = 0;
      cudaMemcpyFromSymbol(&ival, nNeigh, sizeof_int);
@@ -140,7 +140,7 @@ namespace PFClusterCudaECAL {
 #endif
 
      cudaCheck(cudaMemcpyToSymbolAsync(maxSize, &h_maxSize, sizeof_int)); 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
      // Read back the value
      ival = 0;
      cudaMemcpyFromSymbol(&ival, maxSize, sizeof_int);
@@ -527,18 +527,25 @@ __global__ void fastCluster_step2_serialize( size_t size,
 				float* pcrhfrac,
 				float* fracSum,
 				int* rhCount,
-                float* timer
+                float (&timer)[4]
 				)
   { 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
+    cudaEventRecord(start);
 #endif
     //seeding
     if(size>0) seedingKernel_ECAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
-    //cudaDeviceSynchronize();
-      
+    
+#ifdef DEBUG_GPU_ECAL
+      cudaEventRecord(stop);
+      cudaEventSynchronize(stop);
+      cudaEventElapsedTime(&timer[0], start, stop);
+      cudaEventRecord(start);
+#endif
+
     // for(int a=0;a<16;a++){
     //if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
     //}	    
@@ -548,23 +555,17 @@ __global__ void fastCluster_step2_serialize( size_t size,
     dim3 blockT( 64, 8);
     //dim3 gridT( (size+64-1)/64, 8 );
     //dim3 blockT( 64, 16);
-#ifdef GPU_DEBUG_ECAL
-    cudaEventRecord(start);
-#endif
     //for(int h=0; h<18; h++){  
     for(int h=0; h<nTopoLoops; h++){  
       if(size>0) topoKernel_ECALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);        
     }
 
-#ifdef GPU_DEBUG_ECAL
-    float milliseconds = 0;
-    if (timer != NULL)
-    {
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&milliseconds, start, stop);
-        *timer = milliseconds;
-    }
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[1], start, stop);
+    
+    cudaEventRecord(start);
 #endif
     dim3 grid( (size+32-1)/32, (size+32-1)/32 );
     dim3 block( 32, 32);
@@ -572,12 +573,21 @@ __global__ void fastCluster_step2_serialize( size_t size,
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
      if(size>0) fastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-    //cudaDeviceSynchronize();
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[2], start, stop);
+    
+    cudaEventRecord(start);
+#endif
 
     if(size>0) fastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-    //cudaDeviceSynchronize();
-    
    
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[3], start, stop);
+#endif
   }
 
   void PFRechitToPFCluster_ECAL_serialize(size_t size, 
@@ -599,7 +609,7 @@ __global__ void fastCluster_step2_serialize( size_t size,
                 float* timer
 				)
   { 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -608,7 +618,7 @@ __global__ void fastCluster_step2_serialize( size_t size,
     if(size>0) seedingKernel_ECAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
     //cudaDeviceSynchronize();
      
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
     cudaEventRecord(start);
 #endif
     for(int h=0; h < nTopoLoops; h++){
@@ -616,7 +626,7 @@ __global__ void fastCluster_step2_serialize( size_t size,
     }	    
     //cudaDeviceSynchronize();
 
-#ifdef GPU_DEBUG_ECAL
+#ifdef DEBUG_GPU_ECAL
     float milliseconds = 0;
     if (timer != NULL)
     {
@@ -632,174 +642,9 @@ __global__ void fastCluster_step2_serialize( size_t size,
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
      if(size>0) fastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     //cudaDeviceSynchronize();
 
     if(size>0) fastCluster_step2_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-    //cudaDeviceSynchronize();
-    
    
   }
   
-  void PFRechitToPFCluster_ECAL_serialize_seedingParallel(size_t size, 
-				const float* __restrict__ pfrh_x, 
-				const float* __restrict__ pfrh_y, 
-				const float* __restrict__ pfrh_z, 
-				const float* __restrict__ pfrh_energy, 
-				const float* __restrict__ pfrh_pt2,      				
-				int* pfrh_isSeed,
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhfracind,
-				int* pcrhfracind,
-				float* pcrhfrac,
-				float* fracSum,
-				int* rhCount
-				)
-  { 
-    //seeding
-    if(size>0) seedingKernel_ECAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
-    //cudaDeviceSynchronize();
-      
-    // for(int a=0;a<16;a++){
-    if(size>0) topoKernel_ECAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
-    //}	    
-    cudaDeviceSynchronize();
-
-    //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-    //dim3 block( 32, 32);
-
-    //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
-
-     if(size>0) fastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     cudaDeviceSynchronize();
-
-    if(size>0) fastCluster_step2_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-    cudaDeviceSynchronize();
-    
-   
-  }
-  
-  void PFRechitToPFCluster_ECAL_serialize_topoParallel(size_t size, 
-				const float* __restrict__ pfrh_x, 
-				const float* __restrict__ pfrh_y, 
-				const float* __restrict__ pfrh_z, 
-				const float* __restrict__ pfrh_energy, 
-				const float* __restrict__ pfrh_pt2,      				
-				int* pfrh_isSeed,
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhfracind,
-				int* pcrhfracind,
-				float* pcrhfrac,
-				float* fracSum,
-				int* rhCount
-				)
-  { 
-    //seeding
-    if(size>0) seedingKernel_ECAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
-    //cudaDeviceSynchronize();
-      
-    // for(int a=0;a<16;a++){
-    if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
-    //}	    
-    cudaDeviceSynchronize();
-
-    //dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-    //dim3 block( 32, 32);
-
-    //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
-
-     if(size>0) fastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     cudaDeviceSynchronize();
-
-    if(size>0) fastCluster_step2_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-    cudaDeviceSynchronize();
-    
-   
-  }
-  
-  void PFRechitToPFCluster_ECAL_serialize_step1Parallel(size_t size, 
-				const float* __restrict__ pfrh_x, 
-				const float* __restrict__ pfrh_y, 
-				const float* __restrict__ pfrh_z, 
-				const float* __restrict__ pfrh_energy, 
-				const float* __restrict__ pfrh_pt2,      				
-				int* pfrh_isSeed,
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhfracind,
-				int* pcrhfracind,
-				float* pcrhfrac,
-				float* fracSum,
-				int* rhCount
-				)
-  { 
-    //seeding
-    if(size>0) seedingKernel_ECAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
-    //cudaDeviceSynchronize();
-      
-    // for(int a=0;a<16;a++){
-    if(size>0) topoKernel_ECAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind); 
-    //}	    
-    cudaDeviceSynchronize();
-
-    dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-    dim3 block( 32, 32);
-
-    //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
-     if(size>0) fastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     cudaDeviceSynchronize();
-
-     if(size>0) fastCluster_step2_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);  
-     cudaDeviceSynchronize();
-    
-   
-  }
-  
-  void PFRechitToPFCluster_ECAL_serialize_step2Parallel(size_t size, 
-				const float* __restrict__ pfrh_x, 
-				const float* __restrict__ pfrh_y, 
-				const float* __restrict__ pfrh_z, 
-				const float* __restrict__ pfrh_energy, 
-				const float* __restrict__ pfrh_pt2,      				
-				int* pfrh_isSeed,
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhfracind,
-				int* pcrhfracind,
-				float* pcrhfrac,
-				float* fracSum,
-				int* rhCount
-				)
-  { 
-    //seeding
-    if(size>0) seedingKernel_ECAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
-    //cudaDeviceSynchronize();
-      
-    // for(int a=0;a<16;a++){
-    if(size>0) topoKernel_ECAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind); 
-    //}	    
-    cudaDeviceSynchronize();
-
-    dim3 grid( (size+32-1)/32, (size+32-1)/32 );
-    dim3 block( 32, 32);
-
-    //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
-
-     if(size>0) fastCluster_step1_serialize<<<1,1>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     cudaDeviceSynchronize();
-     
-     if(size>0) fastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-     cudaDeviceSynchronize();
-    
-   
-  }
 }  // namespace cudavectors

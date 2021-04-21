@@ -28,7 +28,7 @@
 #include "CondFormats/DataRecord/interface/EcalPFRecHitThresholdsRcd.h"
 
 #include <memory>
-
+#include <array>
 
 class PFClusterProducerCudaECAL : public edm::stream::EDProducer<> {
   typedef RecHitTopologicalCleanerBase RHCB;
@@ -69,6 +69,17 @@ public:
   reco::PFClusterCollection __initialClusters;
   reco::PFClusterCollection __pfClusters;
   reco::PFClusterCollection __pfClustersFromCuda;
+  reco::PFRecHitCollection  __rechits;
+
+  // rechit physics quantities 
+  std::vector<float>  __rh_x;
+  std::vector<float>  __rh_y;
+  std::vector<float>  __rh_z;
+  std::vector<float>  __rh_eta;
+  std::vector<float>  __rh_phi;
+  std::vector<double> __rh_pt2;
+  // rechit neighbours4, neighbours8 vectors
+  std::vector<std::vector<unsigned int>> __rh_neighbours8;
 
   TTree *clusterTree = new TTree("clusterTree", "clusterTree");
   
@@ -117,8 +128,8 @@ public:
   TH2F *nRh_CPUvsGPU = new TH2F("nRh_CPUvsGPU","nRh_CPUvsGPU",101,-0.5,100.5,101,-0.5,100.5);
   TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",50,0,500,50,0,500);
 
-  //bool doComparison=true;
-  bool doComparison=false;
+  bool doComparison=true;
+  //bool doComparison=false;
 
   TH1F *deltaSumSeed  = new TH1F("deltaSumSeed", "sumSeed_{GPU} - sumSeed_{CPU}", 201, -100.5, 100.5);
   TH1F *deltaRH  = new TH1F("deltaRH", "nRH_{GPU} - nRH_{CPU}", 41, -20.5, 20.5);
@@ -130,7 +141,8 @@ public:
   TH1F *layer = new TH1F("layer","layer",7,0,7);
 
   TH1F *timer = new TH1F("timer", "GPU kernel timer", 1000, 0.0, 1.0);
-
+  std::array<float,6> GPU_timers;
+  Int_t numEvents = 0;
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaECAL);

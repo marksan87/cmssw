@@ -1,7 +1,7 @@
 #ifndef PFClusterCudaHCAL_h
 #define PFClusterCudaHCAL_h
 //#include <thrust/host_vector.h>
-//#include <thrust/device_vector.h>
+#include <thrust/device_vector.h>
 #include <Eigen/Dense>
 
 namespace PFClusterCudaHCAL { 
@@ -55,7 +55,41 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 				float* pcrhfracind,
 				float* fracSum,
 				int* rhCount,
-				float* timer = nullptr 
+				float (&timer)[4]  
+                );
+
+void topoClusterLinking(size_t nRH,
+                size_t nEdges,
+                int* pfrh_edgeId,
+                int* pfrh_edgeList,
+                int* pfrh_parent,
+                bool* pfrh_passTopoThresh);
+
+void topoClusterContraction(size_t nRH,
+                int* pfrh_parent);
+
+void PFRechitToPFCluster_HCAL_LabelClustering(size_t nRH,
+                size_t nEdges,
+				const float* __restrict__ pfrh_x,
+				const float* __restrict__ pfrh_y,
+				const float* __restrict__ pfrh_z,
+				const double* __restrict__ pfrh_energy,
+				const double* __restrict__ pfrh_pt2,
+				int* pfrh_isSeed, 
+				int* pfrh_topoId, 
+				const int* __restrict__ pfrh_layer, 
+				const int* __restrict__ pfrh_depth, 
+				const int* __restrict__ neigh8_Ind, 				
+				const int* __restrict__ neigh4_Ind, 				
+				int* pfrh_edgeId,
+				int* pfrh_edgeList,
+			    bool* pfrh_edgeMask,
+                bool* pfrh_passTopoThresh,
+                int* pcrhind,
+				float* pcrhfracind,
+				float* fracSum,
+				int* rhCount,
+				float (&timer)[4]  
                 );
 
 void PFRechitToPFCluster_HCAL_serialize(size_t size, 
@@ -76,80 +110,6 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
 				int* rhCount,
 				float* timer = nullptr 
 				);
-
-void PFRechitToPFCluster_HCAL_serialize_seedingParallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const double* __restrict__ pfrh_energy,
-				const double* __restrict__ pfrh_pt2,
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ pfrh_depth, 
-				const int* __restrict__ neigh8_Ind, 				
-				const int* __restrict__ neigh4_Ind, 				
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount,
-				float* timer = nullptr 
-				);
-
-void PFRechitToPFCluster_HCAL_serialize_topoParallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const double* __restrict__ pfrh_energy,
-				const double* __restrict__ pfrh_pt2,
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ pfrh_depth, 
-				const int* __restrict__ neigh8_Ind, 				
-				const int* __restrict__ neigh4_Ind, 				
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount
-				);
-
-void PFRechitToPFCluster_HCAL_serialize_step1Parallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const double* __restrict__ pfrh_energy,
-				const double* __restrict__ pfrh_pt2,
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ pfrh_depth, 
-				const int* __restrict__ neigh8_Ind, 				
-				const int* __restrict__ neigh4_Ind, 				
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount
-				);
-
-void PFRechitToPFCluster_HCAL_serialize_step2Parallel(size_t size, 
-				const float* __restrict__ pfrh_x,
-				const float* __restrict__ pfrh_y,
-				const float* __restrict__ pfrh_z,
-				const double* __restrict__ pfrh_energy,
-				const double* __restrict__ pfrh_pt2,
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				const int* __restrict__ pfrh_layer, 
-				const int* __restrict__ pfrh_depth, 
-				const int* __restrict__ neigh8_Ind, 				
-				const int* __restrict__ neigh4_Ind, 				
-				int* pcrhind,
-				float* pcrhfracind,
-				float* fracSum,
-				int* rhCount
-				);
-
 
 }  // namespace cudavectors
 
