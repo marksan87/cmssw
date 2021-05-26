@@ -24,7 +24,7 @@
 #endif
 
 // Uncomment to enable GPU debugging
-#define DEBUG_GPU_HCAL
+//#define DEBUG_GPU_HCAL
 
 // Uncomment to fill TTrees
 #define DEBUG_HCAL_TREES
@@ -42,6 +42,7 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
 #ifdef DEBUG_HCAL_TREES
   //setup TTree
   clusterTree->Branch("Event", &numEvents);
+  clusterTree->Branch("nIter", &nIter);
   clusterTree->Branch("timers", &GPU_timers);
   clusterTree->Branch("rechits", "PFRecHitCollection", &__rechits);
   clusterTree->Branch("rechits_x", &__rh_x);
@@ -182,7 +183,7 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
   int nNeigh = sfConf.getParameter<int>("nNeighbours");
   int maxSize = 100; 
 
-  PFClusterCudaHCAL::initializeCudaConstants(showerSigma,
+  if (!PFClusterCudaHCAL::initializeCudaConstants(showerSigma,
                                              recHitEnergyNormEB_vec,
                                              recHitEnergyNormEE_vec,
                                              minFracToKeep,
@@ -193,22 +194,39 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
                                              topoEThresholdEB_vec,
                                              topoEThresholdEE_vec,
                                              nNeigh,
-                                             maxSize);
-
+                                             maxSize)) {
+  
+    std::cout<<"Unable to initialize Cuda constants"<<std::endl;
+    return;
+  }
+  
+  cudaSetDeviceFlags(cudaDeviceMapHost);
+  if (!PFClusterProducerCudaHCAL::initializeCudaMemory()) {
+    // Problem allocating Cuda memory
+    std::cout<<"Unable to allocate Cuda memory"<<std::endl;
+    return;
+  }
+  
   if (_prodInitClusters) {
     produces<reco::PFClusterCollection>("initialClusters");
   }
   produces<reco::PFClusterCollection>();
-
-  
 }
 
 PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
 {
+  // free pinned memory
+  if (h_notDone != nullptr) {
+    cudaCheck(cudaFreeHost(h_notDone));
+    h_notDone = d_notDone = nullptr;
+  }
+  
   MyFile->cd();
 #ifdef DEBUG_HCAL_TREES  
   clusterTree->Write();
 #endif
+  nIterations->Write();
+  nIter_vs_nRH->Write();
   nTopo_CPU->Write();
   nTopo_GPU->Write();
   sumSeed_CPU->Write();
@@ -252,6 +270,24 @@ PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
   delete MyFile;
 }
 
+bool PFClusterProducerCudaHCAL::initializeCudaMemory(int cudaDevice) {
+  //if (!cudaCheck(cudaHostAlloc(reinterpret_cast<void**>(&h_notDone), sizeof(bool), cudaHostAllocMapped | cudaHostAllocPortable))) {
+  if (!cudaCheck(cudaHostAlloc(reinterpret_cast<void**>(&h_notDone), sizeof(bool), cudaHostAllocMapped))) {
+    h_notDone = d_notDone = nullptr;
+    return false;
+  }
+  //if (!cudaCheck(cudaHostGetDevicePointer(reinterpret_cast<void**>(&d_notDone), reinterpret_cast<void*>(h_notDone), cudaDevice))) {
+    // Unable to get device pointer for pinned memory
+    // Attempt to free host pointer
+  //  if (!cudaCheck(cudaFreeHost(h_notDone))) {
+      // Unable to free host memory..
+  //    h_notDone = d_notDone = nullptr;
+  //    return false;
+  //  }
+ // }
+  return true;
+}
+
 void PFClusterProducerCudaHCAL::beginLuminosityBlock(const edm::LuminosityBlock& lumi, const edm::EventSetup& es) {
   _initialClustering->update(es);
   if (_pfClusterBuilder)
@@ -261,6 +297,16 @@ void PFClusterProducerCudaHCAL::beginLuminosityBlock(const edm::LuminosityBlock&
 }
 
 void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es) {
+  /*
+  cudaCheck(cudaSetDeviceFlags(cudaDeviceMapHost));
+  if (h_notDone == nullptr) {
+      if (!PFClusterProducerCudaHCAL::initializeCudaMemory()) {
+        // Problem allocating Cuda memory
+        std::cout<<"Unable to allocate Cuda memory"<<std::endl;
+        return;
+      }
+  }
+  */
   std::cout<<"\n===== Now on event "<<numEvents<<" ====="<<std::endl;
   _initialClustering->reset();
   if (_pfClusterBuilder)
@@ -300,8 +346,8 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   std::vector<float>                                    h_cuda_pfRhFrac(rechits->size()*100,-1.);
   std::vector<float>                                    h_cuda_pcRhFrac(rechits->size()*100,-1.);
   std::vector<int>                                      h_cuda_pfRhFracInd(rechits->size()*100,-1);
-  std::vector<int>                                      h_cuda_pfNeighEightInd(rechits->size()*8,-1);
-  std::vector<int>                                      h_cuda_pfNeighFourInd(rechits->size()*4,-1);
+  std::vector<int>                                    h_cuda_pfNeighEightInd(rechits->size()*8,-1);
+  std::vector<int>                                    h_cuda_pfNeighFourInd(rechits->size()*4,-1);
   std::vector<int>                                      h_cuda_pcRhFracInd(rechits->size()*100,-1);
 
   std::vector<float>                                    h_cuda_pfrh_x(rechits->size(),0);
@@ -316,11 +362,15 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 
   std::vector<int>                                      h_cuda_pfrh_edgeId(rechits->size()*8, -1);      // Rechit index for each edge 
   std::vector<int>                                      h_cuda_pfrh_edgeList(rechits->size()*8, -1);    // Sorted list of 8 neighbours for each rechit 
-  
+
+
+  std::vector<int> h_cuda_pfrh_edgesAll(rechits->size()*8, -1);
+  std::vector<int> h_cuda_pfrh_edgesLeft(rechits->size()*8, -1);
 
   int numbytes_float = rh_size*sizeof(float);
   int numbytes_double = rh_size*sizeof(double);
   int numbytes_int = rh_size*sizeof(int);
+  int numbytes_short = rh_size*sizeof(short);
 
   auto d_cuda_rhcount = cms::cuda::make_device_unique<int[]>(numbytes_int, nullptr);
   auto d_cuda_fracsum = cms::cuda::make_device_unique<float[]>(numbytes_float, nullptr);
@@ -410,8 +460,8 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 
     for (auto nh: n8) {
     h_cuda_pfNeighEightInd[8*p+z] = (int)nh;
-	h_cuda_pfrh_edgeId[totalNeighbours] = (int)p;
-	h_cuda_pfrh_edgeList[totalNeighbours] = (int)nh;
+	h_cuda_pfrh_edgeId[totalNeighbours] = p;
+    h_cuda_pfrh_edgeList[totalNeighbours] = (int)nh;
     totalNeighbours++;
     z++;
       }
@@ -441,13 +491,38 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   h_cuda_pfrh_edgeId.resize(totalNeighbours);
   h_cuda_pfrh_edgeList.resize(totalNeighbours);
 
+  bool* h_bool_edgeMask = new bool[totalNeighbours];
+  for (int i = 0; i < totalNeighbours; i++) {
+    h_cuda_pfrh_edgesAll[i] = i;
+    h_cuda_pfrh_edgesLeft[i] = i;
+    h_bool_edgeMask[i] = true;
+  }
+  bool*                                      d_bool_edgeMask;
+  cudaCheck(cudaMalloc(&d_bool_edgeMask, sizeof(bool) * totalNeighbours));
+  
+  
+  int*                                      d_cuda_pfrh_edgesLeft;
+  cudaCheck(cudaMalloc(&d_cuda_pfrh_edgesLeft, sizeof(int) * totalNeighbours));
+  int*                                      d_cuda_pfrh_edgesAll;
+  cudaCheck(cudaMalloc(&d_cuda_pfrh_edgesAll, sizeof(int) * totalNeighbours));
+  
   // Allocate Cuda memory
   int*  d_cuda_pfrh_edgeId;
   cudaCheck(cudaMalloc(&d_cuda_pfrh_edgeId, sizeof(int) * totalNeighbours));
+  
   int*  d_cuda_pfrh_edgeList;
   cudaCheck(cudaMalloc(&d_cuda_pfrh_edgeList, sizeof(int) * totalNeighbours));
-  bool*                                      d_cuda_pfrh_edgeMask;
-  cudaCheck(cudaMalloc(&d_cuda_pfrh_edgeMask, sizeof(bool) * totalNeighbours));
+ 
+  int*                                      d_cuda_pfrh_edgeMask;
+  cudaCheck(cudaMalloc(&d_cuda_pfrh_edgeMask, sizeof(int) * totalNeighbours));
+
+  int*                                      d_cuda_pfrh_edgeLeft;
+  cudaCheck(cudaMalloc(&d_cuda_pfrh_edgeLeft, sizeof(int) * totalNeighbours));
+  
+  int*                                      d_cuda_pfrh_edgeRight;
+  cudaCheck(cudaMalloc(&d_cuda_pfrh_edgeRight, sizeof(int) * totalNeighbours));
+  
+  
 
 #ifdef DEBUG_GPU_HCAL
   cudaEvent_t start, stop;
@@ -472,8 +547,10 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaCheck(cudaMemcpyAsync(d_cuda_pfNeighFourInd, h_cuda_pfNeighFourInd.data(), numbytes_int*4, cudaMemcpyHostToDevice));  
   cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_edgeId, h_cuda_pfrh_edgeId.data(), sizeof(int)*totalNeighbours, cudaMemcpyHostToDevice));  
   cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_edgeList, h_cuda_pfrh_edgeList.data(), sizeof(int)*totalNeighbours, cudaMemcpyHostToDevice));  
-  //cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_edgeMask, h_cuda_pfrh_edgeMask.data(), sizeof(int)*totalNeighbours, cudaMemcpyHostToDevice));  
- 
+  
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_edgesAll, h_cuda_pfrh_edgesAll.data(), sizeof(int)*totalNeighbours, cudaMemcpyHostToDevice));  
+  cudaCheck(cudaMemcpyAsync(d_cuda_pfrh_edgesLeft, h_cuda_pfrh_edgesLeft.data(), sizeof(int)*totalNeighbours, cudaMemcpyHostToDevice));  
+  cudaCheck(cudaMemcpyAsync(d_bool_edgeMask, h_bool_edgeMask, sizeof(bool)*totalNeighbours, cudaMemcpyHostToDevice));  
   
   cudaCheck(cudaMemcpyAsync(d_cuda_pfRhFrac, h_cuda_pfRhFrac.data(), numbytes_float*100, cudaMemcpyHostToDevice));
   cudaCheck(cudaMemcpyAsync(d_cuda_pcRhFrac, h_cuda_pcRhFrac.data(), numbytes_float*100, cudaMemcpyHostToDevice));
@@ -488,9 +565,10 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 //  cudaEventRecord(start);
 #endif
      
-     float kernelTimers[4] = {0.0};
-     //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize(rh_size, 
+     //float kernelTimers[4] = {0.0};
+     float kernelTimers[8] = {0.0};
      /*
+     //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize(rh_size, 
      PFClusterCudaHCAL::PFRechitToPFCluster_HCALV2(rh_size, 
 					      d_cuda_pfrh_x,  
 					      d_cuda_pfrh_y,  
@@ -510,8 +588,9 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      kernelTimers
                           );
      */
-     PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_LabelClustering(rh_size, 
-					      totalNeighbours,
+     nIter = 0;
+     PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_LabelClustering_nIter((int)rh_size, 
+					      (int)totalNeighbours,
                           d_cuda_pfrh_x,  
 					      d_cuda_pfrh_y,  
 					      d_cuda_pfrh_z, 
@@ -525,21 +604,84 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      d_cuda_pfNeighFourInd, 
 					      d_cuda_pfrh_edgeId, 
 					      d_cuda_pfrh_edgeList, 
+					      d_cuda_pfrh_edgeLeft, 
+					      d_cuda_pfrh_edgeRight, 
 					      d_cuda_pfrh_edgeMask, 
 					      d_cuda_pfrh_passTopoThresh,
+                          h_notDone,
+                          d_notDone,
+                          d_cuda_pcRhFracInd,
+					      d_cuda_pcRhFrac,
+					      d_cuda_fracsum.get(),
+					      d_cuda_rhcount.get(),
+					      kernelTimers,
+                          nIter
+                          );
+     nIterations->Fill(nIter);
+     nIter_vs_nRH->Fill(rh_size, nIter);
+     /*
+     PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_LabelClustering((int)rh_size, 
+					      (int)totalNeighbours,
+                          d_cuda_pfrh_x,  
+					      d_cuda_pfrh_y,  
+					      d_cuda_pfrh_z, 
+					      d_cuda_pfrh_energy, 
+					      d_cuda_pfrh_pt2, 	
+					      d_cuda_pfrh_isSeed,
+					      d_cuda_pfrh_topoId,
+					      d_cuda_pfrh_layer, 
+					      d_cuda_pfrh_depth, 
+					      d_cuda_pfNeighEightInd, 
+					      d_cuda_pfNeighFourInd, 
+					      d_cuda_pfrh_edgeId, 
+					      d_cuda_pfrh_edgeList, 
+					      d_cuda_pfrh_edgeLeft, 
+					      d_cuda_pfrh_edgeRight, 
+					      d_cuda_pfrh_edgeMask, 
+					      d_cuda_pfrh_passTopoThresh,
+                          h_notDone,
+                          d_notDone,
                           d_cuda_pcRhFracInd,
 					      d_cuda_pcRhFrac,
 					      d_cuda_fracsum.get(),
 					      d_cuda_rhcount.get(),
 					      kernelTimers
                           );
-
+        */
+        
+        /*
+        PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_LabelClustering_copyif(rh_size,
+                totalNeighbours,
+                d_cuda_pfrh_x,  
+                d_cuda_pfrh_y,  
+                d_cuda_pfrh_z, 
+                d_cuda_pfrh_energy, 
+                d_cuda_pfrh_pt2,  
+                d_cuda_pfrh_isSeed,
+                d_cuda_pfrh_topoId,
+                d_cuda_pfrh_layer, 
+                d_cuda_pfrh_depth, 
+                d_cuda_pfNeighEightInd, 
+                d_cuda_pfNeighFourInd,
+                d_cuda_pfrh_edgeId,
+                d_cuda_pfrh_edgeList,
+                d_cuda_pfrh_edgesAll,
+                d_cuda_pfrh_edgesLeft,
+                d_bool_edgeMask,
+                d_cuda_pfrh_passTopoThresh,
+                d_cuda_pcRhFracInd,
+                d_cuda_pcRhFrac,
+                d_cuda_fracsum.get(),
+                d_cuda_rhcount.get(),
+                kernelTimers);
+        */
 /*
 #ifdef DEBUG_GPU_HCAL
   cudaEventRecord(stop);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&milliseconds, start, stop);
   std::cout<<"(HCAL) GPU clustering: "<<milliseconds<<" ms"<<std::endl;
+  cudaEventRecord(start);
 #endif
 */
   //std::cout<<"Elapsed time (ms) for HCAL topo clustering: "<<*elapsedTime<<std::endl;
@@ -551,6 +693,12 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   GPU_timers[2] = kernelTimers[1];
   GPU_timers[3] = kernelTimers[2];
   GPU_timers[4] = kernelTimers[3];
+
+  // Label clustering timers
+  GPU_timers[6] = kernelTimers[4];
+  GPU_timers[7] = kernelTimers[5];
+  GPU_timers[8] = kernelTimers[6];
+
 //  std::cout<<"HCAL GPU clustering (ms):\n"
 //           <<"Seeding\t\t"<<GPU_timers[1]<<std::endl
 //           <<"Topo clustering\t"<<GPU_timers[2]<<std::endl
@@ -560,11 +708,11 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaEventRecord(start);
 #endif
 
-  cudaMemcpyAsync(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd  , numbytes_int*100 , cudaMemcpyDeviceToHost);  
-  cudaMemcpyAsync(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac  , numbytes_float*100 , cudaMemcpyDeviceToHost);  
-  cudaMemcpyAsync(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed  , numbytes_int , cudaMemcpyDeviceToHost);  
-  cudaMemcpyAsync(h_cuda_pfrh_topoId.data()    , d_cuda_pfrh_topoId  , numbytes_int , cudaMemcpyDeviceToHost);  
-  cudaMemcpyAsync(h_cuda_pfNeighEightInd.data()    , d_cuda_pfNeighEightInd  , numbytes_int*8 , cudaMemcpyDeviceToHost);  
+  cudaCheck(cudaMemcpyAsync(h_cuda_pcRhFracInd.data()    , d_cuda_pcRhFracInd  , numbytes_int*100 , cudaMemcpyDeviceToHost)); 
+  cudaCheck(cudaMemcpyAsync(h_cuda_pcRhFrac.data()       , d_cuda_pcRhFrac  , numbytes_float*100 , cudaMemcpyDeviceToHost));
+  cudaCheck(cudaMemcpyAsync(h_cuda_pfrh_isSeed.data()    , d_cuda_pfrh_isSeed  , numbytes_int , cudaMemcpyDeviceToHost));
+  cudaCheck(cudaMemcpyAsync(h_cuda_pfrh_topoId.data()    , d_cuda_pfrh_topoId  , numbytes_int , cudaMemcpyDeviceToHost));
+  cudaCheck(cudaMemcpyAsync(h_cuda_pfNeighEightInd.data()    , d_cuda_pfNeighEightInd  , numbytes_int*8 , cudaMemcpyDeviceToHost));
   
 #ifdef DEBUG_GPU_HCAL
   cudaEventRecord(stop);
@@ -587,25 +735,31 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 
 
   //free up
-  cudaFree(d_cuda_pfrh_x);
-  cudaFree(d_cuda_pfrh_y);
-  cudaFree(d_cuda_pfrh_z);
-  cudaFree(d_cuda_pfrh_energy);
-  cudaFree(d_cuda_pfrh_layer);
-  cudaFree(d_cuda_pfrh_depth);
-  cudaFree(d_cuda_pfrh_isSeed);
-  cudaFree(d_cuda_pfrh_topoId);
-  cudaFree(d_cuda_pfrh_pt2);  
-  cudaFree(d_cuda_pfNeighEightInd);
-  cudaFree(d_cuda_pfNeighFourInd);
-  cudaFree(d_cuda_pfRhFracInd);
-  cudaFree(d_cuda_pcRhFracInd);
-  cudaFree(d_cuda_pfRhFrac);
-  cudaFree(d_cuda_pcRhFrac);
-  cudaFree(d_cuda_pfrh_edgeId);
-  cudaFree(d_cuda_pfrh_edgeList);
-  cudaFree(d_cuda_pfrh_edgeMask);
-  cudaFree(d_cuda_pfrh_passTopoThresh);
+  cudaCheck(cudaFree(d_cuda_pfrh_x));
+  cudaCheck(cudaFree(d_cuda_pfrh_y));
+  cudaCheck(cudaFree(d_cuda_pfrh_z));
+  cudaCheck(cudaFree(d_cuda_pfrh_energy));
+  cudaCheck(cudaFree(d_cuda_pfrh_layer));
+  cudaCheck(cudaFree(d_cuda_pfrh_depth));
+  cudaCheck(cudaFree(d_cuda_pfrh_isSeed));
+  cudaCheck(cudaFree(d_cuda_pfrh_topoId));
+  cudaCheck(cudaFree(d_cuda_pfrh_pt2));
+  cudaCheck(cudaFree(d_cuda_pfNeighEightInd));
+  cudaCheck(cudaFree(d_cuda_pfNeighFourInd));
+  cudaCheck(cudaFree(d_cuda_pfRhFracInd));
+  cudaCheck(cudaFree(d_cuda_pcRhFracInd));
+  cudaCheck(cudaFree(d_cuda_pfRhFrac));
+  cudaCheck(cudaFree(d_cuda_pcRhFrac));
+  cudaCheck(cudaFree(d_cuda_pfrh_edgeId));
+  cudaCheck(cudaFree(d_cuda_pfrh_edgeList));
+  cudaCheck(cudaFree(d_cuda_pfrh_edgesAll));
+  cudaCheck(cudaFree(d_cuda_pfrh_edgesLeft));
+  cudaCheck(cudaFree(d_cuda_pfrh_edgeMask));
+  cudaCheck(cudaFree(d_cuda_pfrh_edgeLeft));
+  cudaCheck(cudaFree(d_cuda_pfrh_edgeRight));
+  cudaCheck(cudaFree(d_cuda_pfrh_passTopoThresh));
+  cudaCheck(cudaFree(d_bool_edgeMask));
+
 
   // Determine number of seeds per topo cluster
   std::unordered_map<int, int> topoSeedMap;

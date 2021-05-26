@@ -44,7 +44,7 @@ public:
   //void endJob();
   //  void beginStream(edm::StreamID);
  
-  
+  bool initializeCudaMemory(int cudaDevice=0);
   
   // inputs
   std::vector< std::vector<double> > theThresh;
@@ -85,6 +85,8 @@ public:
 
   TTree *clusterTree = new TTree("clusterTree", "clusterTree");
 
+  TH1F *nIterations = new TH1F("nIter","nIterations Topo Clustering", 26,-0.5,25.5);
+  TH2F *nIter_vs_nRH = new TH2F("nIternRH","nIterations vs num rechits Topo Clustering", 3001, -0.5, 3000.5, 26,-0.5,25.5);
   TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",501,-0.5,500.5);
   TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",501,-0.5,500.5);
 
@@ -145,8 +147,12 @@ public:
 
   TH1F *timer = new TH1F("timer", "GPU kernel timer", 1000, 0.0, 1.0);
 
-  std::array<float,6> GPU_timers;
+  std::array<float,9> GPU_timers;
   Int_t numEvents = 0;
+  Int_t nIter = 0;
+
+  bool *h_notDone = nullptr;    // Host pointer to flag in pinned memory
+  bool *d_notDone = nullptr;    // Device pointer to flag in pinned memory
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaHCAL);
