@@ -12,7 +12,7 @@
 #include <cuda_profiler_api.h>
 
 // Uncomment for debugging
-//#define DEBUG_GPU_HCAL
+#define DEBUG_GPU_HCAL
 
 // Uncomment for verbose debugging output (including extra Cuda Memcpy steps)
 //#define DEBUG_VERBOSE_OUTPUT
@@ -20,7 +20,7 @@
 constexpr int sizeof_float = sizeof(float);
 constexpr int sizeof_int = sizeof(int);
 
-
+__device__ __managed__ bool linkingDone = false, edgeMaskZero = false;
 
 namespace PFClusterCudaHCAL {
 
@@ -44,6 +44,8 @@ namespace PFClusterCudaHCAL {
   //int nTopoLoops = 100;
   int nTopoLoops = 35;
 
+  constexpr int nIterTopo = 10;
+  //constexpr int nIterTopo = 8;
 
   bool initializeCudaConstants(float h_showerSigma,
                                const float (&h_recHitEnergyNormEB_vec)[4],
@@ -238,7 +240,32 @@ namespace PFClusterCudaHCAL {
        }
     }
  }
-  
+ 
+ __global__ void topoKernel_HCAL_passTopoThresh(
+    size_t size,
+    const double* __restrict__ pfrh_energy,
+    int* pfrh_topoId,
+    const bool* __restrict__ pfrh_passTopoThresh,
+    const int* __restrict__ neigh8_Ind
+) {
+
+    int l = threadIdx.x + blockIdx.x*blockDim.x;
+    int k = (threadIdx.y + blockIdx.y*blockDim.y) % nNT;
+
+    //if(l<size && k<nNT) {
+    if (l < size) {
+
+        while (pfrh_passTopoThresh[nNT*l + k] && neigh8_Ind[nNT*l + k] > -1 && pfrh_topoId[l] != pfrh_topoId[neigh8_Ind[nNT*l + k]])
+        {
+            if (pfrh_topoId[l] > pfrh_topoId[neigh8_Ind[nNT*l + k]]) {
+                atomicMax(&pfrh_topoId[neigh8_Ind[nNT*l + k]], pfrh_topoId[l]);
+            }
+            if (pfrh_topoId[l] < pfrh_topoId[neigh8_Ind[nNT*l + k]]) {
+                atomicMax(&pfrh_topoId[l], pfrh_topoId[neigh8_Ind[nNT*l + k]]);
+            }
+        }
+    }
+}
 
    __global__ void topoKernel_HCALV2( 
 				  size_t size,
@@ -671,6 +698,92 @@ __global__ void evenLinkingParent(size_t nEdges,
     }
 }
 
+// Linking step on odd iterations (skips execution if linking is finished)
+__global__ void oddLinkingParentManaged(size_t nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    const int* __restrict__ pfrh_edgeList,
+    const int* __restrict__ pfrh_edgeLeft,
+    const int* __restrict__ pfrh_edgeMask,
+    int* pfrh_parent,
+    const bool* __restrict__ pfrh_passTopoThresh) {
+
+    if (linkingDone) return;
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+        edgeMaskZero = true;    // Reset this flag
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if (idx < nEdges && pfrh_edgeMask[idx] > 0) {
+        int i = pfrh_edgeId[idx];    // Get edge topo id
+        if (pfrh_passTopoThresh[i] && (i == 0 || (i != pfrh_edgeLeft[idx]))) {
+            pfrh_parent[i] = (int)min(i, pfrh_edgeList[idx]);
+        }
+    }
+}
+
+// Linking step on even iterations
+__global__ void evenLinkingParentManaged(size_t nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    const int* __restrict__ pfrh_edgeList,
+    const int* __restrict__ pfrh_edgeRight,
+    const int* __restrict__ pfrh_edgeMask,
+    int* pfrh_parent,
+    const bool* __restrict__ pfrh_passTopoThresh) {
+
+    if (linkingDone) return;
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+        edgeMaskZero = true;    // Reset this flag
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if (idx < nEdges && pfrh_edgeMask[idx] > 0) {
+        int i = pfrh_edgeId[idx];    // Get real edge index
+        if (pfrh_passTopoThresh[i] && (i == (nEdges - 1) || (i != pfrh_edgeRight[idx]))) {
+            pfrh_parent[i] = (int)max(i, pfrh_edgeList[idx]);
+        }
+    }
+}
+
+// Linking step on odd iterations
+__global__ void oddLinkingParent(size_t nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    const int* __restrict__ pfrh_edgeList,
+    const int* __restrict__ pfrh_edgeLeft,
+    const int* __restrict__ pfrh_edgeMask,
+    int* pfrh_parent,
+    const bool* __restrict__ pfrh_passTopoThresh,
+    bool* notDone) {
+
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+        *notDone = false;
+
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if (idx < nEdges && pfrh_edgeMask[idx] > 0) {
+        int i = pfrh_edgeId[idx];    // Get edge topo id
+        if (pfrh_passTopoThresh[i] && (i == 0 || (i != pfrh_edgeLeft[idx]))) {
+            pfrh_parent[i] = (int)min(i, pfrh_edgeList[idx]);
+        }
+    }
+}
+
+// Linking step on even iterations
+__global__ void evenLinkingParent(size_t nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    const int* __restrict__ pfrh_edgeList,
+    const int* __restrict__ pfrh_edgeRight,
+    const int* __restrict__ pfrh_edgeMask,
+    int* pfrh_parent,
+    const bool* __restrict__ pfrh_passTopoThresh,
+    bool* notDone) {
+
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+        *notDone = false;
+
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if (idx < nEdges && pfrh_edgeMask[idx] > 0) {
+        int i = pfrh_edgeId[idx];    // Get real edge index
+        if (pfrh_passTopoThresh[i] && (i == (nEdges - 1) || (i != pfrh_edgeRight[idx]))) {
+            pfrh_parent[i] = (int)max(i, pfrh_edgeList[idx]);
+        }
+    }
+}
+
 // Linking step on odd iterations
 __global__ void oddLinkingParent_copyif(size_t nEdges,
                 const int* __restrict__ pfrh_edgeId,
@@ -760,6 +873,31 @@ __global__ void edgeParent(size_t nEdges,
                 pfrh_edgeMask[idx] = 0;
             }
             else { *d_notDone= true; }
+        }
+    }
+}
+
+__global__ void edgeParentManaged(size_t nEdges,
+    int* pfrh_edgeId,
+    int* pfrh_edgeList,
+    int* pfrh_edgeMask,
+    const int* __restrict__ pfrh_parent) {
+
+    if (linkingDone) return;
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if (idx < nEdges) {
+        if (pfrh_edgeMask[idx] > 0) {
+            int id = pfrh_edgeId[idx];   // Get edge topo id
+            int neighbor = pfrh_edgeList[idx]; // Get neighbor topo id
+            pfrh_edgeId[idx] = pfrh_parent[id];
+            pfrh_edgeList[idx] = pfrh_parent[neighbor];
+
+            // edgeMask set to true if elements of edgeId and edgeList are different
+            if (pfrh_edgeId[idx] == pfrh_edgeList[idx])
+            {
+                pfrh_edgeMask[idx] = 0;
+            }
+            else { edgeMaskZero = false; }
         }
     }
 }
@@ -1205,6 +1343,84 @@ __global__ void initializeArrays(int size,
     }
 }
 
+__global__ void initializeArraysManaged(int size,
+    const int* __restrict__ pfrh_edgeId,
+    int* pfrh_edgeLeft,
+    int* pfrh_edgeRight,
+    int* pfrh_edgeMask) {
+
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        linkingDone = edgeMaskZero = false;
+    }
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if (idx < size) {
+        pfrh_edgeMask[idx] = 1;
+        pfrh_edgeLeft[idx]  = (idx > 0 ? pfrh_edgeId[idx-1] : pfrh_edgeId[0]);
+        pfrh_edgeRight[idx] = (idx < size ? pfrh_edgeId[idx+1] : pfrh_edgeId[idx]);
+    }
+}
+
+__global__ void updateAdjacentEdgesManaged(int nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    int* pfrh_edgeLeft,
+    int* pfrh_edgeRight,
+    const int* __restrict__ pfrh_edgeMask) {
+
+    if (edgeMaskZero) linkingDone = true;
+    if (linkingDone) return;
+    int doubledidx = threadIdx.x + blockIdx.x*blockDim.x;
+    int idx = doubledidx >> 1;  // Divide by 2. Even (odd) values update edgeLeft (edgeRight) arrays 
+    if (doubledidx < nEdges && pfrh_edgeMask[idx] > 0) {
+        if (doubledidx & 0x1) {    // even
+            // Update left
+            if (idx > 0) {
+
+                int temp = idx - 1;
+                int minVal = max(idx - 9, 0);   //  Only test up to 9 neighbors
+                int tempId = 0;
+                int edgeId = pfrh_edgeId[idx];
+                //int minVal = 0;
+                while (temp >= minVal) {
+                    tempId = pfrh_edgeId[temp];
+                    if (edgeId != tempId) {
+                        // Different topo Id here!
+                        pfrh_edgeLeft[idx] = -1;
+                        break;
+                    }
+                    else if (pfrh_edgeMask[temp] > 0) {
+                        // Found adjacent edge
+                        pfrh_edgeLeft[idx] = tempId;
+                        break;
+                    }
+                    temp--;
+                }
+            }
+        }
+        else {      // odd
+            // Update right
+            if (idx < (nEdges - 1)) {
+                int temp = idx + 1;
+                int maxVal = min(idx - 9, nEdges - 1);  //  Only test up to 9 neighbors
+                int tempId = 0;
+                int edgeId = pfrh_edgeId[idx];
+                while (temp >= maxVal) {
+                    tempId = pfrh_edgeId[temp];
+                    if (edgeId != tempId) {
+                        // Different topo Id here!
+                        pfrh_edgeRight[idx] = -1;
+                        break;
+                    }
+                    else if (pfrh_edgeMask[temp] > 0) {
+                        // Found adjacent edge
+                        pfrh_edgeRight[idx] = pfrh_edgeId[temp];
+                        break;
+                    }
+                    temp++;
+                }
+            }
+        }
+    }
+}
 
 __global__ void updateAdjacentEdges(int nEdges,
     const int* __restrict__ pfrh_edgeId,
@@ -1266,6 +1482,39 @@ __global__ void updateAdjacentEdges(int nEdges,
     }
 }
 
+__global__ void updateAdjacentEdgesLeft(int nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    int* pfrh_edgeLeft,
+    const int* __restrict__ pfrh_edgeMask) {
+
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if (idx < nEdges && pfrh_edgeMask[idx] > 0) {
+        // Update left
+        if (idx > 0) {
+            int temp = idx - 1;
+            int minVal = max(idx - 9, 0);   //  Only test up to 9 neighbors
+            int tempId = 0;
+            int edgeId = pfrh_edgeId[idx];
+            //int minVal = 0;
+            while (temp >= minVal) {
+                tempId = pfrh_edgeId[temp];
+                if (edgeId != tempId) {
+                    // Different topo Id here!
+                    pfrh_edgeLeft[idx] = -1;
+                    break;
+                }
+                else if (pfrh_edgeMask[temp] > 0) {
+                    // Found adjacent edge
+                    //pfrh_edgeLeft[idx] = pfrh_edgeId[temp];
+                    pfrh_edgeLeft[idx] = tempId;
+                    break;
+                }
+                temp--;
+            }
+        }
+    }
+}
+
 __global__ void updateAdjacentEdges_serial(int nEdges,
     const int* __restrict__ pfrh_edgeId,
     int* pfrh_edgeLeft,
@@ -1314,6 +1563,179 @@ __global__ void countRemaining_serial(int nEdges,
     *remaining = total;
 }
 
+template<const int _nIter>
+void topoClusterLinking_nIterTemplateManaged(int nRH,
+                int nEdges,
+                int* pfrh_edgeId,
+                int* pfrh_edgeList,
+                int* pfrh_edgeLeft,
+                int* pfrh_edgeRight,
+                int* pfrh_edgeMask,
+                int* pfrh_parent,
+                bool* pfrh_passTopoThresh,
+                bool* h_notDone,
+                bool* d_notDone,
+                int &nIter) {
+
+    if (nEdges < 1) return;
+    int iter = 0;
+
+    
+    //initializeArrays <<<64, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+    initializeArraysManaged <<<64, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+    for (int i = 0; i < _nIter; i++) {
+//        if (iter > 100) {
+//            std::cout << "Too many iterations! Bailing out" << std::endl;
+//            return;
+//        }
+// 
+//        std::cout << "================================================================================";
+//        std::cout << "\nNow on iteration: " << iter << std::endl << std::endl;
+
+        // odd iterations
+        oddLinkingParentManaged <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh);
+        //oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh, h_notDone);
+        edgeParentManaged <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent);
+        updateAdjacentEdgesManaged<<<64, 256>>>(2*nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+//        std::cout << "================================================================================";
+//        std::cout << "\nNow on iteration: " << (iter+1) << std::endl << std::endl;
+
+        evenLinkingParentManaged <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeRight, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh);
+        edgeParentManaged <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent);
+        updateAdjacentEdgesManaged<<<64, 256>>>(2*nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+        //iter += 2;
+    }
+    //cudaDeviceSynchronize();
+    /* 
+    if (*h_notDone) {
+        std::cout << "notDone flag set!" << std::endl << std::endl;
+    }
+    else {
+        std::cout << "Converged!" << std::endl << std::endl;
+    }
+    */
+    iter = nIterTopo;
+    nIter = iter;
+}
+
+
+template<const int _nIter>
+void topoClusterLinking_nIterTemplate(int nRH,
+                int nEdges,
+                int* pfrh_edgeId,
+                int* pfrh_edgeList,
+                int* pfrh_edgeLeft,
+                int* pfrh_edgeRight,
+                int* pfrh_edgeMask,
+                int* pfrh_parent,
+                bool* pfrh_passTopoThresh,
+                bool* h_notDone,
+                bool* d_notDone,
+                int &nIter) {
+
+    if (nEdges < 1) return;
+    int iter = 0;
+
+    
+    initializeArrays <<<64, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+    for (int i = 0; i < _nIter; i++) {
+//        if (iter > 100) {
+//            std::cout << "Too many iterations! Bailing out" << std::endl;
+//            return;
+//        }
+// 
+//        std::cout << "================================================================================";
+//        std::cout << "\nNow on iteration: " << iter << std::endl << std::endl;
+
+        // odd iterations
+        oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh);
+        //oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh, h_notDone);
+        edgeParent <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent, h_notDone);
+        updateAdjacentEdges<<<64, 256>>>(2*nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+//        std::cout << "================================================================================";
+//        std::cout << "\nNow on iteration: " << (iter+1) << std::endl << std::endl;
+
+        evenLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeRight, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh);
+        edgeParent <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent, h_notDone);
+        updateAdjacentEdges<<<64, 256>>>(2*nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+        //iter += 2;
+    }
+    //cudaDeviceSynchronize();
+    /* 
+    if (*h_notDone) {
+        std::cout << "notDone flag set!" << std::endl << std::endl;
+    }
+    else {
+        std::cout << "Converged!" << std::endl << std::endl;
+    }
+    */
+    iter = nIterTopo;
+    nIter = iter;
+}
+
+void topoClusterLinking_nIter(int nRH,
+                int nEdges,
+                int* pfrh_edgeId,
+                int* pfrh_edgeList,
+                int* pfrh_edgeLeft,
+                int* pfrh_edgeRight,
+                int* pfrh_edgeMask,
+                int* pfrh_parent,
+                bool* pfrh_passTopoThresh,
+                bool* h_notDone,
+                bool* d_notDone,
+                int &nIter) {
+
+    if (nEdges < 1) return;
+    int iter = 0;
+
+    
+    initializeArrays <<<64, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+    for (int i = 0; i < nIterTopo; i++) {
+//        if (iter > 100) {
+//            std::cout << "Too many iterations! Bailing out" << std::endl;
+//            return;
+//        }
+// 
+//        std::cout << "================================================================================";
+//        std::cout << "\nNow on iteration: " << iter << std::endl << std::endl;
+
+        // odd iterations
+        oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh);
+        //oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh, h_notDone);
+        edgeParent <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent, h_notDone);
+        updateAdjacentEdges<<<64, 256>>>(2*nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+//        std::cout << "================================================================================";
+//        std::cout << "\nNow on iteration: " << (iter+1) << std::endl << std::endl;
+
+        evenLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh);
+        //evenLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh, h_notDone);
+        edgeParent <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent, h_notDone);
+        updateAdjacentEdges<<<64, 256>>>(2*nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+
+        //iter += 2;
+    }
+    //cudaDeviceSynchronize();
+    /* 
+    if (*h_notDone) {
+        std::cout << "notDone flag set!" << std::endl << std::endl;
+    }
+    else {
+        std::cout << "Converged!" << std::endl << std::endl;
+    }
+    */
+    iter = nIterTopo;
+    nIter = iter;
+}
+
 
 void topoClusterLinkingFast(int nRH,
                 int nEdges,
@@ -1360,13 +1782,15 @@ void topoClusterLinkingFast(int nRH,
         std::cout << "================================================================================";
         std::cout << "\nNow on iteration: " << iter << std::endl << std::endl;
 
+        
         // odd iterations
         if (iter & 0x1) { oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh); }
 
         // even iterations
         else { evenLinkingParent <<<(nEdges + 63) / 64, 128 >> > (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeRight, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh); }
+        
 
-
+        //oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh);
         // Replace edge values with parents
         edgeParent <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent, h_notDone);
         //edgeParent_remaining <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent, h_remaining);
@@ -1377,6 +1801,7 @@ void topoClusterLinkingFast(int nRH,
 
         // Update adjacent edge lists
         updateAdjacentEdges<<<64, 256>>>(2*nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask);
+        //updateAdjacentEdgesLeft<<<64, 256>>>(nEdges, pfrh_edgeId, pfrh_edgeLeft, pfrh_edgeMask); 
 
         cudaDeviceSynchronize();
         //std::cout<<"*h_remaining = "<<*h_remaining<<std::endl<<std::endl;
@@ -1438,12 +1863,13 @@ void topoClusterLinking(int nRH,
         std::cout << "================================================================================";
         std::cout << "\nNow on iteration: " << iter << std::endl << std::endl;
 
+        /*
         // odd iterations
         if (iter & 0x1) { oddLinkingParent <<<(nEdges + 63) / 64, 128 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh); }
 
         // even iterations
         else { evenLinkingParent <<<(nEdges + 63) / 64, 128 >> > (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeRight, pfrh_edgeMask, pfrh_parent, pfrh_passTopoThresh); }
-
+        */
 
         // Replace edge values with parents
         edgeParent <<<(nEdges + 31) / 32, 256 >>> (nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_parent, h_notDone);
@@ -1546,45 +1972,23 @@ void LabelClustering_nIter(int nRH,
     if (nRH < 1) return;
 
     std::cout<<"Rec hits: "<<nRH<<std::endl;
+    //linkingDone = edgeMaskZero = false;
     //cudaSetDeviceFlags(cudaDeviceMapHost);
-    cudaProfilerStart();
+    //cudaDeviceSynchronize();
+    //cudaProfilerStart();
     
     // Linking
     //topoClusterLinking(nRH, nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask, pfrh_topoId, pfrh_passTopoThresh, h_notDone, d_notDone);
-    topoClusterLinkingFast(nRH, nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask, pfrh_topoId, pfrh_passTopoThresh, h_notDone, d_notDone, nIter);
+    //topoClusterLinkingFast(nRH, nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask, pfrh_topoId, pfrh_passTopoThresh, h_notDone, d_notDone, nIter);
+    //topoClusterLinking_nIter(nRH, nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask, pfrh_topoId, pfrh_passTopoThresh, h_notDone, d_notDone, nIter);
+    
+    //topoClusterLinking_nIterTemplate<nIterTopo>(nRH, nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask, pfrh_topoId, pfrh_passTopoThresh, h_notDone, d_notDone, nIter);
+    topoClusterLinking_nIterTemplateManaged<nIterTopo>(nRH, nEdges, pfrh_edgeId, pfrh_edgeList, pfrh_edgeLeft, pfrh_edgeRight, pfrh_edgeMask, pfrh_topoId, pfrh_passTopoThresh, h_notDone, d_notDone, nIter);
 
-/*
-    int* h_val;
-    int* d_val;
-    cudaHostAlloc(reinterpret_cast<void**>(&h_val), sizeof(int), cudaHostAllocMapped);
-    cudaHostGetDevicePointer(reinterpret_cast<void**>(&d_val), reinterpret_cast<void*>(h_val), 0);
-    
-    *h_val = 0;
-    std::cout<<"Initial: *h_val = "<<*h_val<<std::endl;
-    testMe<<<1,1>>>(d_val);
-    
-    bool* h_flag;
-    bool* d_flag;
-    cudaSetDeviceFlags(cudaDeviceMapHost);
-    cudaHostAlloc(reinterpret_cast<void**>(&h_flag), sizeof(bool), cudaHostAllocMapped);
-    cudaHostGetDevicePointer(reinterpret_cast<void**>(&d_flag), reinterpret_cast<void*>(h_flag), 0);
-*/
-    // Graph contraction
-    //topoClusterContraction(nRH, pfrh_topoId, h_notDone, d_notDone);
-    //topoClusterContraction(nRH, pfrh_topoId, h_flag, d_flag);
-    //topoClusterContraction_copyif(nRH, pfrh_topoId);
     topoClusterContraction_singleBlock(nRH, pfrh_topoId);
     
- /*   
-    std::cout<<"Result: *h_val = "<<*h_val<<std::endl;
-    cudaDeviceSynchronize();
-    std::cout<<"After sync: *h_val = "<<*h_val<<std::endl;
-
-    
-    cudaFreeHost(h_flag);
-    cudaFreeHost(h_val);
- */   
-    cudaProfilerStop();
+    //cudaDeviceSynchronize();
+    //cudaProfilerStop();
 }
 
 void PFRechitToPFCluster_HCAL_LabelClustering_nIter(int nRH,
@@ -1626,6 +2030,7 @@ void PFRechitToPFCluster_HCAL_LabelClustering_nIter(int nRH,
     cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
+    cudaProfilerStart();
     //seeding
     seedingKernel_HCAL<<<(nRH+511)/512, 512>>>( nRH,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
 
@@ -1644,9 +2049,9 @@ void PFRechitToPFCluster_HCAL_LabelClustering_nIter(int nRH,
 
 #ifdef DEBUG_GPU_HCAL
     cudaEventRecord(stop);
-    cudaDeviceSynchronize();
     cudaEventSynchronize(stop);   
     cudaEventElapsedTime(&timer[1], start, stop);
+    cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
 
@@ -1669,8 +2074,9 @@ void PFRechitToPFCluster_HCAL_LabelClustering_nIter(int nRH,
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);   
     cudaEventElapsedTime(&timer[3], start, stop);
+    cudaDeviceSynchronize();
 #endif
-
+    cudaProfilerStop();
 }
 
 void PFRechitToPFCluster_HCAL_LabelClustering(int nRH,
@@ -1879,6 +2285,7 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 				const double* __restrict__ pfrh_energy, 
 				const double* __restrict__ pfrh_pt2,    				
 				int* pfrh_isSeed,
+				bool* pfrh_passTopoThresh,
 				int* pfrh_topoId, 
 				const int* __restrict__ pfrh_layer, 
 				const int* __restrict__ pfrh_depth, 
@@ -1891,15 +2298,19 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 				float (&timer)[8]
                 )
   {
+    if (size <= 0) return;
 #ifdef DEBUG_GPU_HCAL
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
 #endif
+    cudaProfilerStart();
     //seeding
-    if(size>0) seedingKernel_HCAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
+    seedingKernel_HCAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,pfrh_depth,  neigh4_Ind);
 
+    // Passing topo clustering threshold
+    passingTopoThreshold<<<(size+255)/256, 256>>>( size, pfrh_layer, pfrh_depth, pfrh_energy, pfrh_passTopoThresh);
 #ifdef DEBUG_GPU_HCAL
       cudaEventRecord(stop);
       cudaEventSynchronize(stop);   
@@ -1909,15 +2320,17 @@ void PFRechitToPFCluster_HCALV2(size_t size,
     
     //topoclustering 
      
+      //cudaProfilerStart();
       //dim3 gridT( (size+64-1)/64, 1 );
       //dim3 blockT( 64, 8);
       dim3 gridT( (size+64-1)/64, 8 );
       dim3 blockT( 64, 16); // 16 threads in a half-warp
       for(int h=0;h<nTopoLoops; h++){
-    
-      if(size>0) topoKernel_HCALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
+        topoKernel_HCAL_passTopoThresh <<<gridT, blockT >>> (size, pfrh_energy, pfrh_topoId, pfrh_passTopoThresh, neigh8_Ind);
+        //topoKernel_HCALV2<<<gridT, blockT>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, pfrh_depth, neigh8_Ind);	     
       }
    
+      //cudaProfilerStop();
 #ifdef DEBUG_GPU_HCAL
       cudaEventRecord(stop);
       cudaEventSynchronize(stop);   
@@ -1928,7 +2341,7 @@ void PFRechitToPFCluster_HCALV2(size_t size,
       dim3 grid( (size+32-1)/32, (size+32-1)/32 );
       dim3 block( 32, 32);
 
-      if(size>0) hcalFastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
+      hcalFastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
 
 #ifdef DEBUG_GPU_HCAL
       cudaEventRecord(stop);
@@ -1937,7 +2350,7 @@ void PFRechitToPFCluster_HCALV2(size_t size,
       cudaEventRecord(start);
 #endif
 
-      if(size>0) hcalFastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
+      hcalFastCluster_step2<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
 
 #ifdef DEBUG_GPU_HCAL
       cudaEventRecord(stop);
@@ -1945,6 +2358,7 @@ void PFRechitToPFCluster_HCALV2(size_t size,
       cudaEventElapsedTime(&timer[3], start, stop);
 #endif
 
+      cudaProfilerStop();
   }
 
 void PFRechitToPFCluster_HCAL_serialize(size_t size, 

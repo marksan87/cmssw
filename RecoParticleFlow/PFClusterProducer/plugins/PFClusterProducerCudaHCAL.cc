@@ -24,7 +24,7 @@
 #endif
 
 // Uncomment to enable GPU debugging
-//#define DEBUG_GPU_HCAL
+#define DEBUG_GPU_HCAL
 
 // Uncomment to fill TTrees
 #define DEBUG_HCAL_TREES
@@ -370,7 +370,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   int numbytes_float = rh_size*sizeof(float);
   int numbytes_double = rh_size*sizeof(double);
   int numbytes_int = rh_size*sizeof(int);
-  int numbytes_short = rh_size*sizeof(short);
+  //int numbytes_short = rh_size*sizeof(short);
 
   auto d_cuda_rhcount = cms::cuda::make_device_unique<int[]>(numbytes_int, nullptr);
   auto d_cuda_fracsum = cms::cuda::make_device_unique<float[]>(numbytes_float, nullptr);
@@ -528,6 +528,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
+  cudaDeviceSynchronize();
   cudaEventRecord(start);
 #endif
 
@@ -567,7 +568,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
      
      //float kernelTimers[4] = {0.0};
      float kernelTimers[8] = {0.0};
-     /*
+     
      //PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_serialize(rh_size, 
      PFClusterCudaHCAL::PFRechitToPFCluster_HCALV2(rh_size, 
 					      d_cuda_pfrh_x,  
@@ -576,6 +577,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      d_cuda_pfrh_energy, 
 					      d_cuda_pfrh_pt2, 	
 					      d_cuda_pfrh_isSeed,
+					      d_cuda_pfrh_passTopoThresh,
 					      d_cuda_pfrh_topoId,
 					      d_cuda_pfrh_layer, 
 					      d_cuda_pfrh_depth, 
@@ -587,7 +589,8 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      d_cuda_rhcount.get(),
 					      kernelTimers
                           );
-     */
+      
+     /* 
      nIter = 0;
      PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_LabelClustering_nIter((int)rh_size, 
 					      (int)totalNeighbours,
@@ -619,6 +622,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
                           );
      nIterations->Fill(nIter);
      nIter_vs_nRH->Fill(rh_size, nIter);
+     */
      /*
      PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_LabelClustering((int)rh_size, 
 					      (int)totalNeighbours,
@@ -704,7 +708,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 //           <<"Topo clustering\t"<<GPU_timers[2]<<std::endl
 //           <<"PF cluster step 1 \t"<<GPU_timers[3]<<std::endl
 //           <<"PF cluster step 2 \t"<<GPU_timers[4]<<std::endl;
-
+  cudaDeviceSynchronize();
   cudaEventRecord(start);
 #endif
 
