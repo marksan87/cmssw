@@ -7,7 +7,7 @@
 
 namespace PFClusterCudaECAL {
   
-  void initializeCudaConstants(float h_showerSigma = 0.,
+  bool initializeCudaConstants(float h_showerSigma = 0.,
                                float h_recHitEnergyNormEB = 0.,
                                float h_recHitEnergyNormEE = 0., 
                                float h_minFracToKeep = 0.,
@@ -21,14 +21,36 @@ namespace PFClusterCudaECAL {
                                int   h_maxSize = 50
                                );
 
-  //void initializeConstants(CudaECALConstants* constants);
- 
+
+  void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
+                int nEdges,
+                const float* __restrict__ pfrh_x,
+                const float* __restrict__ pfrh_y,
+                const float* __restrict__ pfrh_z,
+                const double* __restrict__ pfrh_energy,
+                const double* __restrict__ pfrh_pt2,
+                int* pfrh_isSeed,
+                int* pfrh_topoId,
+                const int* __restrict__ pfrh_layer,
+                const int* __restrict__ neigh8_Ind,
+                int* pfrh_edgeId,
+                int* pfrh_edgeList,
+                int* pfrh_edgeMask,
+                bool* pfrh_passTopoThresh,
+                int* pcrhfracind,
+                float* pcrhfrac,
+                float* fracSum,
+                int* rhCount,
+                float (&timer)[8],
+                int* nIter
+                );
+
   void PFRechitToPFCluster_ECALV2(size_t size, 
 				const float* __restrict__ pfrh_x,
 				const float* __restrict__ pfrh_y,
 				const float* __restrict__ pfrh_z,
-				const float* __restrict__ pfrh_energy,	
-				const float* __restrict__ pfrh_pt2, 
+				const double* __restrict__ pfrh_energy,	
+				const double* __restrict__ pfrh_pt2, 
 				int* pfrh_isSeed, 
 				int* pfrh_topoId, 
 				const int* __restrict__ pfrh_layer, 
@@ -39,7 +61,7 @@ namespace PFClusterCudaECAL {
 				float* pcrhfracind,
 				float* fracSum,
 				int* rhCount,
-				float (&timer)[4]
+				float (&timer)[8]
                 );
 
  void PFRechitToPFCluster_ECALV1(size_t size, 

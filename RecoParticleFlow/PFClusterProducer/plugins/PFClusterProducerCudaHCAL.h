@@ -45,6 +45,7 @@ public:
   //  void beginStream(edm::StreamID);
  
   bool initializeCudaMemory(int cudaDevice=0);
+  void freeCudaMemory(int cudaDevice=0);
   
   // inputs
   std::vector< std::vector<double> > theThresh;
@@ -72,6 +73,8 @@ public:
   reco::PFRecHitCollection  __rechits;
   
   // rechit pt^2
+  std::vector<int>    __rh_mask;
+  std::vector<int>    __rh_isSeed;
   std::vector<float>  __rh_x;
   std::vector<float>  __rh_y;
   std::vector<float>  __rh_z;
@@ -150,9 +153,13 @@ public:
   std::array<float,9> GPU_timers;
   Int_t numEvents = 0;
   Int_t nIter = 0;
+  Int_t nEdges = 0;
 
   bool *h_notDone = nullptr;    // Host pointer to flag in pinned memory
   bool *d_notDone = nullptr;    // Device pointer to flag in pinned memory
+
+  int *h_nIter = nullptr;
+  int *d_nIter = nullptr;
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaHCAL);

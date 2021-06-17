@@ -45,7 +45,8 @@ public:
   //void endJob();
   //  void beginStream(edm::StreamID);
  
-  
+  bool initializeCudaMemory(int cudaDevice=0);
+  void freeCudaMemory(int cudaDevice=0); 
   
   // inputs
   std::vector< std::vector<double> > theThresh;
@@ -72,6 +73,8 @@ public:
   reco::PFRecHitCollection  __rechits;
 
   // rechit physics quantities 
+  std::vector<int>    __rh_mask;
+  std::vector<int>    __rh_isSeed;
   std::vector<float>  __rh_x;
   std::vector<float>  __rh_y;
   std::vector<float>  __rh_z;
@@ -83,6 +86,8 @@ public:
 
   TTree *clusterTree = new TTree("clusterTree", "clusterTree");
   
+  TH1F *nIterations = new TH1F("nIter","nIterations Topo Clustering", 26,-0.5,25.5);
+  TH2F *nIter_vs_nRH = new TH2F("nIternRH","nIterations vs num rechits Topo Clustering", 3001, -0.5, 3000.5, 26,-0.5,25.5);
   TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",500,0,500);
   TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",500,0,500);
 
@@ -141,8 +146,13 @@ public:
   TH1F *layer = new TH1F("layer","layer",7,0,7);
 
   TH1F *timer = new TH1F("timer", "GPU kernel timer", 1000, 0.0, 1.0);
-  std::array<float,6> GPU_timers;
+  std::array<float,9> GPU_timers;
   Int_t numEvents = 0;
+  Int_t nIter = 0;
+  Int_t nEdges = 0;
+
+  int *h_nIter = nullptr;
+  int *d_nIter = nullptr;
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaECAL);

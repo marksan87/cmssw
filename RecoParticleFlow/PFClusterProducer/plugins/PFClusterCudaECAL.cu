@@ -10,7 +10,9 @@
 #include <Eigen/Dense>
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
+#include <cuda_profiler_api.h>
 
+// Uncomment for debugging
 #define DEBUG_GPU_ECAL
 
 constexpr int sizeof_float = sizeof(float);
@@ -18,7 +20,7 @@ constexpr int sizeof_int = sizeof(int);
 
 namespace PFClusterCudaECAL {
 
-  __constant__ float showerSigma;
+  __constant__ float showerSigma2;
   __constant__ float recHitEnergyNormEB;
   __constant__ float recHitEnergyNormEE;
   __constant__ float minFracToKeep;
@@ -37,7 +39,7 @@ namespace PFClusterCudaECAL {
   int nTopoLoops = 18; // Number of iterations for topo kernel 
   
   
-  void initializeCudaConstants(float h_showerSigma,
+  bool initializeCudaConstants(float h_showerSigma2,
                                float h_recHitEnergyNormEB,
                                float h_recHitEnergyNormEE,
                                float h_minFracToKeep,
@@ -51,118 +53,154 @@ namespace PFClusterCudaECAL {
                                int   h_maxSize
                            )
   {
-     cudaCheck(cudaMemcpyToSymbolAsync(showerSigma, &h_showerSigma, sizeof_float)); 
+     bool status = true;
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(showerSigma2, &h_showerSigma2, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
+     std::cout<<"--- ECAL Cuda constant values ---"<<std::endl;
      float val = 0.;
-     cudaMemcpyFromSymbol(&val, showerSigma, sizeof_float);
-     std::cout<<"showerSigma read from symbol: "<<val<<std::endl;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, showerSigma2, sizeof_float));
+     std::cout<<"showerSigma2 read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEB, &h_recHitEnergyNormEB, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEB, &h_recHitEnergyNormEB, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, recHitEnergyNormEB, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, recHitEnergyNormEB, sizeof_float));
      std::cout<<"recHitEnergyNormEB read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEE, &h_recHitEnergyNormEE, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEE, &h_recHitEnergyNormEE, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, recHitEnergyNormEE, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, recHitEnergyNormEE, sizeof_float));
      std::cout<<"recHitEnergyNormEE read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(minFracToKeep, &h_minFracToKeep, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(minFracToKeep, &h_minFracToKeep, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, minFracToKeep, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFracToKeep, sizeof_float));
      std::cout<<"minFracToKeep read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB, &h_seedEThresholdEB, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB, &h_seedEThresholdEB, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, seedEThresholdEB, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, seedEThresholdEB, sizeof_float));
      std::cout<<"seedEThresholdEB read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEE, &h_seedEThresholdEE, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEE, &h_seedEThresholdEE, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, seedEThresholdEE, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, seedEThresholdEE, sizeof_float));
      std::cout<<"seedEThresholdEE read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEB, &h_seedPt2ThresholdEB, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEB, &h_seedPt2ThresholdEB, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, seedPt2ThresholdEB, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, seedPt2ThresholdEB, sizeof_float));
      std::cout<<"seedPt2ThresholdEB read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEE, &h_seedPt2ThresholdEE, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEE, &h_seedPt2ThresholdEE, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, seedPt2ThresholdEE, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, seedPt2ThresholdEE, sizeof_float));
      std::cout<<"seedPt2ThresholdEE read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEB, &h_topoEThresholdEB, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEB, &h_topoEThresholdEB, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, topoEThresholdEB, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, topoEThresholdEB, sizeof_float));
      std::cout<<"topoEThresholdEB read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEE, &h_topoEThresholdEE, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEE, &h_topoEThresholdEE, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     cudaMemcpyFromSymbol(&val, topoEThresholdEE, sizeof_float);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, topoEThresholdEE, sizeof_float));
      std::cout<<"topoEThresholdEE read from symbol: "<<val<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(nNeigh, &h_nNeigh, sizeof_int)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(nNeigh, &h_nNeigh, sizeof_int)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      int ival = 0;
-     cudaMemcpyFromSymbol(&ival, nNeigh, sizeof_int);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&ival, nNeigh, sizeof_int));
      std::cout<<"nNeigh read from symbol: "<<ival<<std::endl;
 #endif
 
-     cudaCheck(cudaMemcpyToSymbolAsync(maxSize, &h_maxSize, sizeof_int)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(maxSize, &h_maxSize, sizeof_int)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      ival = 0;
-     cudaMemcpyFromSymbol(&ival, maxSize, sizeof_int);
+     status &= cudaCheck(cudaMemcpyFromSymbol(&ival, maxSize, sizeof_int));
      std::cout<<"maxSize read from symbol: "<<ival<<std::endl;
 #endif  
+
+     return status;
   }
-  
-  /*
-  void initializeConstants(PFClusterCudaECAL::CudaECALConstants* constants)
-  {
-     cudaMemcpyToSymbolAsync(showerSigma, &(constants->showerSigma), sizeof(float));
-     // Read back the value
-     float val = 0.;
-     cudaMemcpyFromSymbolAsync(&val, showerSigma, sizeof(float));
-     std::cout<<"Value read from symbol: "<<val<<std::endl;
-  }
-  */
+
+__global__ void seedingTopoThreshKernel_ECAL(
+                    size_t size,
+                    const double* __restrict__ pfrh_energy,
+                    const double* __restrict__ pfrh_pt2,
+                    int*   pfrh_isSeed,
+                    int*   pfrh_topoId,
+                    bool*  pfrh_passTopoThresh,
+                    const int* __restrict__ pfrh_layer,
+                    const int* __restrict__ neigh8_Ind
+                    ) {
+
+   int i = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if(i<size) {
+     // Seeding threshold test
+     if ( (pfrh_layer[i] == -1 && pfrh_energy[i]>seedEThresholdEB && pfrh_pt2[i]>seedPt2ThresholdEB) || 
+          (pfrh_layer[i] == -2 && pfrh_energy[i]>seedEThresholdEE && pfrh_pt2[i]>seedPt2ThresholdEE) ) {
+     pfrh_isSeed[i]=1;
+     for(int k=0; k<nNeigh; k++){
+       if(neigh8_Ind[nNeigh*i+k]<0) continue;
+       if(pfrh_energy[i]<pfrh_energy[neigh8_Ind[nNeigh*i+k]]){
+         pfrh_isSeed[i]=0;
+         //pfrh_topoId[i]=-1;
+         break;
+       }
+     }
+       }
+     else{
+       //pfrh_topoId[i]=-1;
+       pfrh_isSeed[i]=0;
+     }
+   
+
+     // Topo clustering threshold test
+     if ( (pfrh_layer[i] == -2 && pfrh_energy[i]>topoEThresholdEE) ||
+          (pfrh_layer[i] == -1 && pfrh_energy[i]>topoEThresholdEB) ) {
+            pfrh_passTopoThresh[i] = true;
+        }
+     //else { pfrh_passTopoThresh[i] = false; }
+     else { pfrh_passTopoThresh[i] = false; pfrh_topoId[i] = -1; }
+   }
+}
 
  __global__ void seedingKernel_ECAL(
      				size_t size, 
-				    const float* __restrict__ pfrh_energy,
-				    const float* __restrict__ pfrh_pt2,
+				    const double* __restrict__ pfrh_energy,
+				    const double* __restrict__ pfrh_pt2,
 				    int*   pfrh_isSeed,
 				    int*   pfrh_topoId,
 				    const int* __restrict__ pfrh_layer,
@@ -253,7 +291,7 @@ namespace PFClusterCudaECAL {
   
   __global__ void topoKernel_ECALV2( 
                   size_t size,
-                  const float* __restrict__ pfrh_energy,
+                  const double* __restrict__ pfrh_energy,
                   int* pfrh_topoId,
                   const int* __restrict__ pfrh_layer,
                   const int* __restrict__ neigh8_Ind
@@ -321,7 +359,7 @@ __global__ void fastCluster_step1( size_t size,
 					     const float* __restrict__ pfrh_x,
 					     const float* __restrict__ pfrh_y,
 					     const float* __restrict__ pfrh_z,
-					     const float* __restrict__ pfrh_energy,
+					     const double* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
 					     const int* __restrict__ pfrh_layer,
@@ -343,7 +381,7 @@ __global__ void fastCluster_step1( size_t size,
 	      +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	      +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-      float d2 = dist2 / (showerSigma*showerSigma);
+      float d2 = dist2 / showerSigma2; 
       float fraction = -1.;
 
       if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
@@ -363,7 +401,7 @@ __global__ void fastCluster_step2( size_t size,
 					     const float* __restrict__ pfrh_x,
 					     const float* __restrict__ pfrh_y,
 					     const float* __restrict__ pfrh_z,
-					     const float* __restrict__ pfrh_energy,
+					     const double* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
 					     const int* __restrict__ pfrh_layer,
@@ -389,7 +427,7 @@ __global__ void fastCluster_step2( size_t size,
 	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
 	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-	float d2 = dist2 / (showerSigma*showerSigma);
+	float d2 = dist2 / showerSigma2; 
 	float fraction = -1.;
 
 	if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
@@ -436,7 +474,7 @@ __global__ void fastCluster_step1_serialize( size_t size,
                   +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
                   +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-              float d2 = dist2 / (showerSigma*showerSigma);
+              float d2 = dist2 / showerSigma2; 
               float fraction = -1.;
 
               if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
@@ -487,7 +525,7 @@ __global__ void fastCluster_step2_serialize( size_t size,
               +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
               +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-            float d2 = dist2 / (showerSigma*showerSigma);
+            float d2 = dist2 / showerSigma2; 
             float fraction = -1.;
 
             if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
@@ -507,16 +545,306 @@ __global__ void fastCluster_step2_serialize( size_t size,
         }
     }
 }
-  
 
+// Contraction in a single block
+__global__ void topoClusterContraction(size_t size, int* pfrh_parent) {
+    __shared__ int notDone;
+    if (threadIdx.x == 0) notDone = 0;
+    __syncthreads();
+
+    do {
+        volatile bool threadNotDone = false;
+        for (int i = threadIdx.x; i < size; i += blockDim.x) {
+            int parent = pfrh_parent[i];
+            if (parent >= 0 && parent != pfrh_parent[parent]) {
+                threadNotDone = true;
+                pfrh_parent[i] = pfrh_parent[parent];
+            }
+        }
+        if (threadIdx.x == 0) notDone = 0;
+        __syncthreads();
+
+        atomicAdd(&notDone, (int)threadNotDone);
+        //if (threadNotDone) notDone = true;
+        //notDone |= threadNotDone;
+        __syncthreads();
+
+    } while (notDone);
+}
+
+
+__device__ bool isLeftEdge(const int idx,
+    const int nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    const int* __restrict__ pfrh_edgeMask) {
+
+    if (idx > 0) {
+        int temp = idx - 1;
+        int minVal = max(idx - 9, 0);   //  Only test up to 9 neighbors
+        int tempId = 0;
+        int edgeId = pfrh_edgeId[idx];
+        //int minVal = 0;
+        while (temp >= minVal) {
+            tempId = pfrh_edgeId[temp];
+            if (edgeId != tempId) {
+                // Different topo Id here!
+                return true;
+            }
+            else if (pfrh_edgeMask[temp] > 0) {
+                // Found adjacent edge
+                return false;
+            }
+            temp--;
+        }
+    }
+    else if (idx == 0) {
+        return true;
+    }
+
+    // Invalid index
+    return false;
+}
+
+__device__ bool isRightEdge(const int idx,
+    const int nEdges,
+    const int* __restrict__ pfrh_edgeId,
+    const int* __restrict__ pfrh_edgeMask) {
+
+    // Update right
+    if (idx < (nEdges - 1)) {
+        int temp = idx + 1;
+        int maxVal = min(idx - 9, nEdges - 1);  //  Only test up to 9 neighbors
+        //int maxVal = nEdges - 1;
+        int tempId = 0;
+        int edgeId = pfrh_edgeId[idx];
+        while (temp >= maxVal) {
+            tempId = pfrh_edgeId[temp];
+            if (edgeId != tempId) {
+                // Different topo Id here!
+                return true;
+            }
+            else if (pfrh_edgeMask[temp] > 0) {
+                // Found adjacent edge
+                return false;
+            }
+            temp++;
+        }
+    }
+    else if (idx == (nEdges - 1)) {
+        return true;
+    }
+
+    // Overflow
+    return false;
+}
+
+__global__ void topoClusterLinking(int nRH,
+    int nEdges,
+    int* pfrh_parent,
+    int* pfrh_edgeId,
+    int* pfrh_edgeList,
+    int* pfrh_edgeMask,
+    bool* pfrh_passTopoThresh,
+    int* nIter) {
+
+    __shared__ bool notDone;
+    __shared__ int iter, gridStride;
+
+    int start = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (threadIdx.x == 0) {
+        *nIter = 0;
+        iter = 0;
+        gridStride = blockDim.x * gridDim.x; // For single block kernel this is the number of threads
+    }
+    __syncthreads();
+
+    // Check if pairs in edgeId,edgeList contain a rh not passing topo threshold
+    // If found, set the mask to 0
+    for (int idx = start; idx < nEdges; idx += gridStride) {
+        if (pfrh_passTopoThresh[pfrh_edgeId[idx]] && pfrh_passTopoThresh[pfrh_edgeList[idx]])
+            pfrh_edgeMask[idx] = 1;
+        else
+            pfrh_edgeMask[idx] = 0;
+    }
+
+
+    // Begin linking loop
+    do {
+        if (threadIdx.x == 0) {
+            notDone = false;
+        }
+        __syncthreads();
+
+        // Odd linking
+        for (int idx = start; idx < nEdges; idx += gridStride) {
+            int i = pfrh_edgeId[idx];   // Get edge topo id
+            //if (pfrh_edgeMask[idx] > 0 && pfrh_passTopoThresh[i] && isLeftEdge(idx, nEdges, pfrh_edgeId, pfrh_edgeMask)) {
+            if (pfrh_edgeMask[idx] > 0 && isLeftEdge(idx, nEdges, pfrh_edgeId, pfrh_edgeMask)) {
+                pfrh_parent[i] = (int)min(i, pfrh_edgeList[idx]);
+            }
+        }
+
+        __syncthreads();
+
+        // edgeParent
+        for (int idx = start; idx < nEdges; idx += gridStride) {
+            if (pfrh_edgeMask[idx] > 0) {
+                int id = pfrh_edgeId[idx];   // Get edge topo id
+                int neighbor = pfrh_edgeList[idx]; // Get neighbor topo id
+                pfrh_edgeId[idx] = pfrh_parent[id];
+                pfrh_edgeList[idx] = pfrh_parent[neighbor];
+
+                // edgeMask set to true if elements of edgeId and edgeList are different
+                if (pfrh_edgeId[idx] != pfrh_edgeList[idx]) {
+                    pfrh_edgeMask[idx] = 1;
+                    notDone = true;
+                }
+                else {
+                    pfrh_edgeMask[idx] = 0;
+                }
+            }
+        }
+        if (threadIdx.x == 0)
+            iter++;
+
+        __syncthreads();
+
+        if (!notDone) break;
+
+        if (threadIdx.x == 0) {
+            notDone = false;
+        }
+
+        __syncthreads();
+
+        // Even linking
+        for (int idx = start; idx < nEdges; idx += gridStride) {
+            int i = pfrh_edgeId[idx];   // Get edge topo id
+            //if (pfrh_edgeMask[idx] > 0 && pfrh_passTopoThresh[i] && isRightEdge(idx, nEdges, pfrh_edgeId, pfrh_edgeMask)) {
+            if (pfrh_edgeMask[idx] > 0 && isRightEdge(idx, nEdges, pfrh_edgeId, pfrh_edgeMask)) {
+                pfrh_parent[i] = (int)max(i, pfrh_edgeList[idx]);
+            }
+        }
+
+        __syncthreads();
+
+        // edgeParent
+        for (int idx = start; idx < nEdges; idx += gridStride) {
+            if (pfrh_edgeMask[idx] > 0) {
+                int id = pfrh_edgeId[idx];   // Get edge topo id
+                int neighbor = pfrh_edgeList[idx]; // Get neighbor topo id
+                pfrh_edgeId[idx] = pfrh_parent[id];
+                pfrh_edgeList[idx] = pfrh_parent[neighbor];
+
+                // edgeMask set to true if elements of edgeId and edgeList are different
+                if (pfrh_edgeId[idx] != pfrh_edgeList[idx]) {
+                    pfrh_edgeMask[idx] = 1;
+                    notDone = true;
+                }
+                else {
+                    pfrh_edgeMask[idx] = 0;
+                }
+            }
+        }
+        if (threadIdx.x == 0)
+            iter++;
+
+        __syncthreads();
+
+    } while (notDone);
+    *nIter = iter;
+}
+
+
+void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
+                int nEdges,
+                const float* __restrict__ pfrh_x,
+                const float* __restrict__ pfrh_y,
+                const float* __restrict__ pfrh_z,
+                const double* __restrict__ pfrh_energy,
+                const double* __restrict__ pfrh_pt2,
+                int* pfrh_isSeed,
+                int* pfrh_topoId,
+                const int* __restrict__ pfrh_layer,
+                const int* __restrict__ neigh8_Ind,
+                int* pfrh_edgeId,
+                int* pfrh_edgeList,
+                int* pfrh_edgeMask,
+                bool* pfrh_passTopoThresh,
+                int* pcrhfracind,
+                float* pcrhfrac,
+                float* fracSum,
+                int* rhCount,
+                float (&timer)[8],
+                int* nIter) {
+    if (nRH < 1) return;
+
+#ifdef DEBUG_GPU_ECAL
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaDeviceSynchronize();
+    cudaEventRecord(start);
+#endif
+    cudaProfilerStart();
+    // Combined seeding & topo clustering thresholds
+    seedingTopoThreshKernel_ECAL<<<(nRH+63/64), 128>>>(nRH, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, neigh8_Ind);
+
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[0], start, stop);
+    cudaDeviceSynchronize();
+    cudaEventRecord(start);
+#endif
+
+    //topoclustering 
+    topoClusterLinking<<<1, 1024 >>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, nIter);
+    topoClusterContraction<<<1, 512>>>(nRH, pfrh_topoId);
+
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[1], start, stop);
+    cudaDeviceSynchronize();
+    cudaEventRecord(start);
+#endif
+
+
+
+
+    dim3 grid( (nRH+32-1)/32, (nRH+32-1)/32 );
+    dim3 block( 32, 32);
+
+    fastCluster_step1<<<grid, block>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
+
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[2], start, stop);
+    cudaDeviceSynchronize();
+    cudaEventRecord(start);
+#endif
+
+    fastCluster_step2<<<grid, block>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
+
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[3], start, stop);
+    cudaDeviceSynchronize();
+#endif
+    cudaProfilerStop();
+}
    
 
   void PFRechitToPFCluster_ECALV2(size_t size, 
 				const float* __restrict__ pfrh_x, 
 				const float* __restrict__ pfrh_y, 
 				const float* __restrict__ pfrh_z, 
-				const float* __restrict__ pfrh_energy, 
-				const float* __restrict__ pfrh_pt2,      				
+				const double* __restrict__ pfrh_energy, 
+				const double* __restrict__ pfrh_pt2,      				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
 				const int* __restrict__ pfrh_layer, 
@@ -527,7 +855,7 @@ __global__ void fastCluster_step2_serialize( size_t size,
 				float* pcrhfrac,
 				float* fracSum,
 				int* rhCount,
-                float (&timer)[4]
+                float (&timer)[8]
 				)
   { 
 #ifdef DEBUG_GPU_ECAL
@@ -572,7 +900,7 @@ __global__ void fastCluster_step2_serialize( size_t size,
 
     //if(size>0) std::cout<<std::endl<<"NEW EVENT !!"<<std::endl<<std::endl;
 
-     if(size>0) fastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
+    if(size>0) fastCluster_step1<<<grid, block>>>( size, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
