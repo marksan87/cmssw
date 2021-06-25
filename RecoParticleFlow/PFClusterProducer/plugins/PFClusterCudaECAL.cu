@@ -15,6 +15,7 @@
 // Uncomment for debugging
 #define DEBUG_GPU_ECAL
 
+
 constexpr int sizeof_float = sizeof(float);
 constexpr int sizeof_int = sizeof(int);
 
@@ -24,6 +25,8 @@ namespace PFClusterCudaECAL {
   __constant__ float recHitEnergyNormEB;
   __constant__ float recHitEnergyNormEE;
   __constant__ float minFracToKeep;
+  __constant__ float minFracTot;
+  __constant__ float stoppingTolerance;
 
   __constant__ float seedEThresholdEB;
   __constant__ float seedEThresholdEE;
@@ -32,6 +35,9 @@ namespace PFClusterCudaECAL {
 
   __constant__ float topoEThresholdEB;
   __constant__ float topoEThresholdEE;
+
+  __constant__ int maxIterations;
+  __constant__ bool excludeOtherSeeds;
 
   __constant__ int nNeigh;
   __constant__ int maxSize;
@@ -43,6 +49,10 @@ namespace PFClusterCudaECAL {
                                float h_recHitEnergyNormEB,
                                float h_recHitEnergyNormEE,
                                float h_minFracToKeep,
+                               float h_minFracTot,
+                               int   h_maxIterations,
+                               float h_stoppingTolerance,
+                               bool  h_excludeOtherSeeds,
                                float h_seedEThresholdEB,
                                float h_seedEThresholdEE,
                                float h_seedPt2ThresholdEB,
@@ -85,6 +95,38 @@ namespace PFClusterCudaECAL {
      val = 0.;
      status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFracToKeep, sizeof_float));
      std::cout<<"minFracToKeep read from symbol: "<<val<<std::endl;
+#endif
+     
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(minFracTot, &h_minFracTot, sizeof_float)); 
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     val = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFracTot, sizeof_float));
+     std::cout<<"minFracTot read from symbol: "<<val<<std::endl;
+#endif
+     
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(stoppingTolerance, &h_stoppingTolerance, sizeof_float)); 
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     val = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, stoppingTolerance, sizeof_float));
+     std::cout<<"stoppingTolerance read from symbol: "<<val<<std::endl;
+#endif
+     
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(excludeOtherSeeds, &h_excludeOtherSeeds, sizeof(bool))); 
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     bool bval = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&bval, excludeOtherSeeds, sizeof(bool)));
+     std::cout<<"excludeOtherSeeds read from symbol: "<<bval<<std::endl;
+#endif
+     
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(maxIterations, &h_maxIterations, sizeof_int)); 
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     int ival = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&ival, maxIterations, sizeof_int));
+     std::cout<<"maxIterations read from symbol: "<<ival<<std::endl;
 #endif
 
      status &= cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB, &h_seedEThresholdEB, sizeof_float)); 
@@ -138,7 +180,7 @@ namespace PFClusterCudaECAL {
      status &= cudaCheck(cudaMemcpyToSymbolAsync(nNeigh, &h_nNeigh, sizeof_int)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
-     int ival = 0;
+     ival = 0;
      status &= cudaCheck(cudaMemcpyFromSymbol(&ival, nNeigh, sizeof_int));
      std::cout<<"nNeigh read from symbol: "<<ival<<std::endl;
 #endif
@@ -156,8 +198,10 @@ namespace PFClusterCudaECAL {
 
 __global__ void seedingTopoThreshKernel_ECAL(
                     size_t size,
-                    const double* __restrict__ pfrh_energy,
-                    const double* __restrict__ pfrh_pt2,
+                    int*  rhCount,
+                    float* fracSum,
+                    const float* __restrict__ pfrh_energy,
+                    const float* __restrict__ pfrh_pt2,
                     int*   pfrh_isSeed,
                     int*   pfrh_topoId,
                     bool*  pfrh_passTopoThresh,
@@ -168,6 +212,10 @@ __global__ void seedingTopoThreshKernel_ECAL(
    int i = threadIdx.x+blockIdx.x*blockDim.x;
 
    if(i<size) {
+     // Initialize rhCount
+     rhCount[i] = 1;
+     fracSum[i] = 0.;
+
      // Seeding threshold test
      if ( (pfrh_layer[i] == -1 && pfrh_energy[i]>seedEThresholdEB && pfrh_pt2[i]>seedPt2ThresholdEB) || 
           (pfrh_layer[i] == -2 && pfrh_energy[i]>seedEThresholdEE && pfrh_pt2[i]>seedPt2ThresholdEE) ) {
@@ -199,8 +247,8 @@ __global__ void seedingTopoThreshKernel_ECAL(
 
  __global__ void seedingKernel_ECAL(
      				size_t size, 
-				    const double* __restrict__ pfrh_energy,
-				    const double* __restrict__ pfrh_pt2,
+				    const float* __restrict__ pfrh_energy,
+				    const float* __restrict__ pfrh_pt2,
 				    int*   pfrh_isSeed,
 				    int*   pfrh_topoId,
 				    const int* __restrict__ pfrh_layer,
@@ -291,7 +339,7 @@ __global__ void seedingTopoThreshKernel_ECAL(
   
   __global__ void topoKernel_ECALV2( 
                   size_t size,
-                  const double* __restrict__ pfrh_energy,
+                  const float* __restrict__ pfrh_energy,
                   int* pfrh_topoId,
                   const int* __restrict__ pfrh_layer,
                   const int* __restrict__ neigh8_Ind
@@ -354,12 +402,11 @@ __global__ void seedingTopoThreshKernel_ECAL(
       } 
   }
 
-  
 __global__ void fastCluster_step1( size_t size,
 					     const float* __restrict__ pfrh_x,
 					     const float* __restrict__ pfrh_y,
 					     const float* __restrict__ pfrh_z,
-					     const double* __restrict__ pfrh_energy,
+					     const float* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
 					     const int* __restrict__ pfrh_layer,
@@ -385,13 +432,14 @@ __global__ void fastCluster_step1( size_t size,
       float fraction = -1.;
 
       if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-      if(pfrh_layer[j] == -2) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+      else if(pfrh_layer[j] == -2) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
       if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
       
-      if( pfrh_isSeed[j]!=1 && d2<100)
-	{ 
+      if( pfrh_isSeed[j]!=1)
+	{
+    
 	  atomicAdd(&fracSum[j],fraction);	  
-	}
+    }
       }
     }
   }
@@ -401,7 +449,7 @@ __global__ void fastCluster_step2( size_t size,
 					     const float* __restrict__ pfrh_x,
 					     const float* __restrict__ pfrh_y,
 					     const float* __restrict__ pfrh_z,
-					     const double* __restrict__ pfrh_energy,
+					     const float* __restrict__ pfrh_energy,
 					     int* pfrh_topoId,
 					     int* pfrh_isSeed,
 					     const int* __restrict__ pfrh_layer,
@@ -422,30 +470,44 @@ __global__ void fastCluster_step2( size_t size,
 	  pcrhfracind[i*maxSize] = j;
 	}
       if( pfrh_isSeed[j]!=1 ){
-	float dist2 = 
-	   (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
-	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
-	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
+        float dist2 = 
+           (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
+          +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
+          +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);	
 
-	float d2 = dist2 / showerSigma2; 
-	float fraction = -1.;
+        float d2 = dist2 / showerSigma2; 
+        float fraction = -1.;
 
-	if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-	if(pfrh_layer[j] == -2) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
-	if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
-	if(d2 < 100. )
-	  { 
-	    if ((fraction/fracSum[j])>minFracToKeep){
-	      int k = atomicAdd(&rhCount[i],1);
-	      pcrhfrac[i*maxSize+k] = fraction/fracSum[j];
-	      pcrhfracind[i*maxSize+k] = j;
-	    }
-	  }
-      }
+        if(pfrh_layer[j] == -1) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
+        if(pfrh_layer[j] == -2) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+        if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
+        
+        if (fracSum[j] > minFracTot) {
+            float fracpct = fraction / fracSum[j];
+            if(fracpct > 0.9999 || (d2 < 100. && fracpct > minFracToKeep))
+              { 
+                  int k = atomicAdd(&rhCount[i],1);
+                  pcrhfrac[i*maxSize+k] = fracpct; 
+                  pcrhfracind[i*maxSize+k] = j;
+              }
+        }
+
+        /*
+        if(d2 < 100. )
+          { 
+            if ((fraction/fracSum[j])>minFracToKeep){
+              int k = atomicAdd(&rhCount[i],1);
+              pcrhfrac[i*maxSize+k] = fraction/fracSum[j];
+              pcrhfracind[i*maxSize+k] = j;
+            }
+          }
+        */
+          }
       }
     }        
 }
 
+  
 __global__ void fastCluster_step1_serialize( size_t size,
 					     const float* __restrict__ pfrh_x,
 					     const float* __restrict__ pfrh_y,
@@ -483,7 +545,7 @@ __global__ void fastCluster_step1_serialize( size_t size,
               
               if( pfrh_isSeed[j]!=1 && d2<100)
             { 
-              atomicAdd(&fracSum[j],fraction);	  
+                  atomicAdd(&fracSum[j],fraction);	  
             }
               }
             }
@@ -762,8 +824,8 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
                 const float* __restrict__ pfrh_x,
                 const float* __restrict__ pfrh_y,
                 const float* __restrict__ pfrh_z,
-                const double* __restrict__ pfrh_energy,
-                const double* __restrict__ pfrh_pt2,
+                const float* __restrict__ pfrh_energy,
+                const float* __restrict__ pfrh_pt2,
                 int* pfrh_isSeed,
                 int* pfrh_topoId,
                 const int* __restrict__ pfrh_layer,
@@ -789,7 +851,7 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 #endif
     cudaProfilerStart();
     // Combined seeding & topo clustering thresholds
-    seedingTopoThreshKernel_ECAL<<<(nRH+63/64), 128>>>(nRH, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, neigh8_Ind);
+    seedingTopoThreshKernel_ECAL<<<(nRH+63/64), 128>>>(nRH, rhCount, fracSum, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, neigh8_Ind);
 
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(stop);
@@ -843,14 +905,12 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 				const float* __restrict__ pfrh_x, 
 				const float* __restrict__ pfrh_y, 
 				const float* __restrict__ pfrh_z, 
-				const double* __restrict__ pfrh_energy, 
-				const double* __restrict__ pfrh_pt2,      				
+				const float* __restrict__ pfrh_energy, 
+				const float* __restrict__ pfrh_pt2,      				
 				int* pfrh_isSeed,
 				int* pfrh_topoId, 
 				const int* __restrict__ pfrh_layer, 
 				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhfracind,
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,
@@ -864,6 +924,8 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventCreate(&stop);
     cudaEventRecord(start);
 #endif
+    cudaMemsetAsync(rhCount, 1, sizeof(int)*size);
+    cudaMemsetAsync(fracSum, 0., sizeof(float)*size);
     //seeding
     if(size>0) seedingKernel_ECAL<<<(size+512-1)/512, 512>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
     
@@ -928,8 +990,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 				int* pfrh_topoId, 
 				const int* __restrict__ pfrh_layer, 
 				const int* __restrict__ neigh8_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhfracind,
 				int* pcrhfracind,
 				float* pcrhfrac,
 				float* fracSum,

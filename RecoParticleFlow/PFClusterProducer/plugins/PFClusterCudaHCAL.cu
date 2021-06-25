@@ -24,6 +24,8 @@ namespace PFClusterCudaHCAL {
   __constant__ float recHitEnergyNormEB_vec[4];
   __constant__ float recHitEnergyNormEE_vec[7];
   __constant__ float minFracToKeep;
+  __constant__ float minFracTot;
+  __constant__ float stoppingTolerance;
 
   __constant__ float seedEThresholdEB_vec[4];
   __constant__ float seedEThresholdEE_vec[7];
@@ -32,7 +34,10 @@ namespace PFClusterCudaHCAL {
 
   __constant__ float topoEThresholdEB_vec[4];
   __constant__ float topoEThresholdEE_vec[7];
-  
+ 
+  __constant__ int maxIterations;
+  __constant__ bool excludeOtherSeeds;
+
   __constant__ int nNT = 8;  // Number of neighbors considered for topo clustering
   __constant__ int nNeigh;
   __constant__ int maxSize;
@@ -45,6 +50,10 @@ namespace PFClusterCudaHCAL {
                                const float (&h_recHitEnergyNormEB_vec)[4],
                                const float (&h_recHitEnergyNormEE_vec)[7],
                                float h_minFracToKeep,
+                               float h_minFracTot,
+                               int   h_maxIterations,
+                               float h_stoppingTolerance,
+                               bool  h_excludeOtherSeeds,
                                const float (&h_seedEThresholdEB_vec)[4],
                                const float (&h_seedEThresholdEE_vec)[7],
                                float h_seedPt2ThresholdEB,
@@ -91,6 +100,38 @@ namespace PFClusterCudaHCAL {
      val = 0.;
      status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFracToKeep, sizeof_float));
      std::cout<<"minFracToKeep read from symbol: "<<val<<std::endl;
+#endif
+    
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(minFracTot, &h_minFracTot, sizeof_float));
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     val = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFracTot, sizeof_float));
+     std::cout<<"minFracTot read from symbol: "<<val<<std::endl;
+#endif
+
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(stoppingTolerance, &h_stoppingTolerance, sizeof_float));
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     val = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, stoppingTolerance, sizeof_float));
+     std::cout<<"stoppingTolerance read from symbol: "<<val<<std::endl;
+#endif
+
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(excludeOtherSeeds, &h_excludeOtherSeeds, sizeof(bool)));
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     bool bval = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&bval, excludeOtherSeeds, sizeof(bool)));
+     std::cout<<"excludeOtherSeeds read from symbol: "<<bval<<std::endl;
+#endif
+
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(maxIterations, &h_maxIterations, sizeof_int));
+#ifdef DEBUG_GPU_ECAL
+     // Read back the value
+     int ival = 0.;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&ival, maxIterations, sizeof_int));
+     std::cout<<"maxIterations read from symbol: "<<ival<<std::endl;
 #endif
 
      status &= cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB_vec, &h_seedEThresholdEB_vec, 4*sizeof_float));
@@ -408,7 +449,7 @@ __global__ void hcalFastCluster_step1( size_t size,
 	  
       if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
-      if( pfrh_isSeed[j]!=1 && d2<100.)
+      if( pfrh_isSeed[j]!=1 )
 	{
 	  atomicAdd(&fracSum[j],fraction);
 	}
@@ -416,7 +457,8 @@ __global__ void hcalFastCluster_step1( size_t size,
     }
 }
 
-__global__ void hcalFastCluster_step1( int size,
+
+__global__ void hcalFastCluster_step2( size_t size,
 					     const float* __restrict__ pfrh_x,
 					     const float* __restrict__ pfrh_y,
 					     const float* __restrict__ pfrh_z,
@@ -435,30 +477,52 @@ __global__ void hcalFastCluster_step1( int size,
     int j = threadIdx.y+blockIdx.y*blockDim.y;
     //make sure topoID, Layer is the same, i is seed and j is not seed
     if( i<size && j<size){
-
       if( pfrh_topoId[i] == pfrh_topoId[j] && pfrh_isSeed[i]==1 ){
-
-      float dist2 =
-	       (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
-	      +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
-	      +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);
-
-      float d2 = dist2 / showerSigma2;
-      float fraction = -1.;
-
-      if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
-      else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
-	  
-      if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
-
-      if( pfrh_isSeed[j]!=1 && d2<100.)
+      if(i==j)
 	{
-	  atomicAdd(&fracSum[j],fraction);
+	  pcrhfrac[i*maxSize]    = 1.;
+	  pcrhfracind[i*maxSize] = j;
 	}
+      if( pfrh_isSeed[j]!=1 ){
+        float dist2 =
+           (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
+          +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
+          +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);
+
+        float d2 = dist2 / showerSigma2; 
+        float fraction = -1.;
+
+        if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+        else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
+        
+        if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
+        
+        if (fracSum[j] > minFracTot) {
+            float fracpct = fraction / fracSum[j];
+            if(fracpct > 0.9999 || (d2 < 100. && fracpct > minFracToKeep))
+              {
+                  int k = atomicAdd(&rhCount[i],1);
+                  pcrhfrac[i*maxSize+k] = fracpct;
+                  pcrhfracind[i*maxSize+k] = j;
+              }
+        }
+        /*
+        if(d2 < 100. )
+          {
+            if ((fraction/fracSum[j])>minFracToKeep){
+              int k = atomicAdd(&rhCount[i],1);
+              pcrhfrac[i*maxSize+k] = fraction/fracSum[j];
+              pcrhfracind[i*maxSize+k] = j;
+              //printf("(i,j)=(%d,%d), rhCount=%d, fraction=%f, fracsum=%f \n",i,j,rhCount[i], fraction, fracSum[j]);
+            }
+          }
+        */
+      }
       }
     }
 }
- 
+
+
 __global__ void hcalFastCluster_step1_serialize( size_t size,
 					     const float* __restrict__ pfrh_x,
 					     const float* __restrict__ pfrh_y,
@@ -496,7 +560,7 @@ __global__ void hcalFastCluster_step1_serialize( size_t size,
               
               if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
-              if( pfrh_isSeed[j]!=1 && d2<100.)
+              if( pfrh_isSeed[j]!=1 )
             {
               atomicAdd(&fracSum[j],fraction);
             }
@@ -506,108 +570,6 @@ __global__ void hcalFastCluster_step1_serialize( size_t size,
     }
   }
 
-__global__ void hcalFastCluster_step2( int size,
-					     const float* __restrict__ pfrh_x,
-					     const float* __restrict__ pfrh_y,
-					     const float* __restrict__ pfrh_z,
-					     const double* __restrict__ pfrh_energy,
-					     int* pfrh_topoId,
-					     int* pfrh_isSeed,
-					     const int* __restrict__ pfrh_layer,
-				         const int* __restrict__ pfrh_depth,
-					     float* pcrhfrac,
-					     int* pcrhfracind,
-					     float* fracSum,
-					     int* rhCount
-					     ) {
-
-    int i = threadIdx.x+blockIdx.x*blockDim.x;
-    int j = threadIdx.y+blockIdx.y*blockDim.y;
-    //make sure topoID, Layer is the same, i is seed and j is not seed
-    if( i<size && j<size){
-      if( pfrh_topoId[i] == pfrh_topoId[j] && pfrh_isSeed[i]==1 ){
-      if(i==j)
-	{
-	  pcrhfrac[i*maxSize]    = 1.;
-	  pcrhfracind[i*maxSize] = j;
-	}
-      if( pfrh_isSeed[j]!=1 ){
-	float dist2 =
-	   (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
-	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
-	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);
-
-	float d2 = dist2 / showerSigma2; 
-	float fraction = -1.;
-
-    if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
-    else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
-	
-	if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
-	if(d2 < 100. )
-	  {
-	    if ((fraction/fracSum[j])>minFracToKeep){
-	      int k = atomicAdd(&rhCount[i],1);
-	      pcrhfrac[i*maxSize+k] = fraction/fracSum[j];
-	      pcrhfracind[i*maxSize+k] = j;
-	    }
-	  }
-      }
-      }
-    }
-}
-
-__global__ void hcalFastCluster_step2( size_t size,
-					     const float* __restrict__ pfrh_x,
-					     const float* __restrict__ pfrh_y,
-					     const float* __restrict__ pfrh_z,
-					     const double* __restrict__ pfrh_energy,
-					     int* pfrh_topoId,
-					     int* pfrh_isSeed,
-					     const int* __restrict__ pfrh_layer,
-				         const int* __restrict__ pfrh_depth,
-					     float* pcrhfrac,
-					     int* pcrhfracind,
-					     float* fracSum,
-					     int* rhCount
-					     ) {
-
-    int i = threadIdx.x+blockIdx.x*blockDim.x;
-    int j = threadIdx.y+blockIdx.y*blockDim.y;
-    //make sure topoID, Layer is the same, i is seed and j is not seed
-    if( i<size && j<size){
-      if( pfrh_topoId[i] == pfrh_topoId[j] && pfrh_isSeed[i]==1 ){
-      if(i==j)
-	{
-	  pcrhfrac[i*maxSize]    = 1.;
-	  pcrhfracind[i*maxSize] = j;
-	}
-      if( pfrh_isSeed[j]!=1 ){
-	float dist2 =
-	   (pfrh_x[i] - pfrh_x[j])*(pfrh_x[i] - pfrh_x[j])
-	  +(pfrh_y[i] - pfrh_y[j])*(pfrh_y[i] - pfrh_y[j])
-	  +(pfrh_z[i] - pfrh_z[j])*(pfrh_z[i] - pfrh_z[j]);
-
-	float d2 = dist2 / showerSigma2; 
-	float fraction = -1.;
-
-    if(pfrh_layer[j] == 1) { fraction = pfrh_energy[i] / recHitEnergyNormEB_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
-    else if (pfrh_layer[j] == 3) { fraction = pfrh_energy[i] / recHitEnergyNormEE_vec[pfrh_depth[j] - 1] * expf(-0.5 * d2); }
-	
-	if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
-	if(d2 < 100. )
-	  {
-	    if ((fraction/fracSum[j])>minFracToKeep){
-	      int k = atomicAdd(&rhCount[i],1);
-	      pcrhfrac[i*maxSize+k] = fraction/fracSum[j];
-	      pcrhfracind[i*maxSize+k] = j;
-	      //printf("(i,j)=(%d,%d), rhCount=%d, fraction=%f, fracsum=%f \n",i,j,rhCount[i], fraction, fracSum[j]);
-	    }
-	  }
-      }
-      }
-    }
-}
 
 
 __global__ void hcalFastCluster_step2_serialize( size_t size,

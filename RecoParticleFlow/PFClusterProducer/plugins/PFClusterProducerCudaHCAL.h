@@ -155,6 +155,8 @@ public:
   Int_t nIter = 0;
   Int_t nEdges = 0;
 
+  int maxSize = 100; // Max number of rechits per pf cluster
+
   bool *h_notDone = nullptr;    // Host pointer to flag in pinned memory
   bool *d_notDone = nullptr;    // Device pointer to flag in pinned memory
 
