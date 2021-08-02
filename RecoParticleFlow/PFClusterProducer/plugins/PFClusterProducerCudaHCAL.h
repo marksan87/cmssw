@@ -18,6 +18,8 @@
 
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 
+#include "RecoParticleFlow/PFClusterProducer/plugins/CudaPFCommon.h"
+
 #include <TFile.h>
 #include <TH1F.h>
 #include <TH2F.h>
@@ -28,7 +30,32 @@
 #include <memory>
 #include <array>
 #include <algorithm>
+/*
+namespace PFClustering {
+ namespace HCAL {
+    struct timeResConsts {
+      float corrTermLowE;
+      float threshLowE;
+      float noiseTerm;
+      float constantTermLowE2;
+      float noiseTermLowE;
+      float threshHighE;
+      float constantTerm2;
+      float resHighE2;
 
+      timeResConsts() :
+            corrTermLowE(-1.0),
+            threshLowE(-1.0),
+            noiseTerm(-1.0),
+            constantTermLowE2(-1.0),
+            noiseTermLowE(-1.0),
+            threshHighE(-1.0),
+            constantTerm2(-1.0),
+            resHighE2(-1.0) {};
+    };
+ } // namespace HCAL
+} // namespace PFClustering
+*/
 class PFClusterProducerCudaHCAL : public edm::stream::EDProducer<> {
   typedef RecHitTopologicalCleanerBase RHCB;
   typedef InitialClusteringStepBase ICSB;
@@ -48,12 +75,16 @@ public:
   void freeCudaMemory(int cudaDevice=0);
   
   // inputs
-  std::vector< std::vector<double> > theThresh;
+  std::vector< std::vector<float> > theThresh;
   edm::EDGetTokenT<reco::PFRecHitCollection> _rechitsLabel;
-  edm::EDGetTokenT< std::vector<double> > _trash;
+  edm::EDGetTokenT< std::vector<float> > _trash;
   
   // options
   const bool _prodInitClusters;
+
+  PFClustering::common::TimeResConsts endcapTimeResConsts;
+  PFClustering::common::TimeResConsts barrelTimeResConsts;
+
   // the actual algorithm
   std::vector<std::unique_ptr<RecHitTopologicalCleanerBase> > _cleaners;
   std::unique_ptr<SeedFinderBase> _seedFinder;
@@ -80,7 +111,7 @@ public:
   std::vector<float>  __rh_z;
   std::vector<float>  __rh_eta;
   std::vector<float>  __rh_phi;
-  std::vector<double> __rh_pt2;
+  std::vector<float> __rh_pt2;
   // rechit neighbours4, neighbours8 vectors
   std::vector<std::vector<int>> __rh_neighbours4;
   std::vector<std::vector<int>> __rh_neighbours8;
@@ -88,13 +119,16 @@ public:
 
   TTree *clusterTree = new TTree("clusterTree", "clusterTree");
 
-  TH1F *nIterations = new TH1F("nIter","nIterations Topo Clustering", 26,-0.5,25.5);
-  TH2F *nIter_vs_nRH = new TH2F("nIternRH","nIterations vs num rechits Topo Clustering", 3001, -0.5, 3000.5, 26,-0.5,25.5);
-  TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",501,-0.5,500.5);
-  TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",501,-0.5,500.5);
+  TH1F *nIterations = new TH1F("nIter","nIterations Topo Clustering", 25, 0.5, 25.5);
+  TH2F *nIter_vs_nRH = new TH2F("nIternRH","nIterations vs num rechits Topo Clustering", 3000, 0.5, 3000.5, 25, 0.5, 25.5);
+  TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",500,0.5,500.5);
+  TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",500,0.5,500.5);
 
-  TH1F *sumSeed_CPU = new TH1F("sumSeed_CPU", "sumSeed_CPU",201, -0.5, 200.5);
-  TH1F *sumSeed_GPU = new TH1F("sumSeed_GPU", "sumSeed_GPU",201, -0.5, 200.5);
+  TH1F *topoSeeds_CPU = new TH1F("topoSeeds_CPU","topoSeeds_CPU",200,0.5,200.5);
+  TH1F *topoSeeds_GPU = new TH1F("topoSeeds_GPU","topoSeeds_GPU",200,0.5,200.5);
+
+  TH1F *sumSeed_CPU = new TH1F("sumSeed_CPU", "sumSeed_CPU",200, 0.5, 200.5);
+  TH1F *sumSeed_GPU = new TH1F("sumSeed_GPU", "sumSeed_GPU",200, 0.5, 200.5);
 
   TH1F *topoEn_CPU = new TH1F("topoEn_CPU", "topoEn_CPU", 500, 0, 500);
   TH1F *topoEn_GPU = new TH1F("topoEn_GPU", "topoEn_GPU", 500, 0, 500);
@@ -105,8 +139,8 @@ public:
   TH1F *topoPhi_CPU = new TH1F("topoPhi_CPU", "topoPhi_CPU", 100, -3.1415926, 3.1415926);
   TH1F *topoPhi_GPU = new TH1F("topoPhi_GPU", "topoPhi_GPU", 100, -3.1415926, 3.1415926);
 
-  TH1F *nPFCluster_CPU = new TH1F("nPFCluster_CPU","nPFCluster_CPU",1001,-0.5,1000.5);
-  TH1F *nPFCluster_GPU = new TH1F("nPFCluster_GPU","nPFCluster_GPU",1001,-0.5,1000.5);
+  TH1F *nPFCluster_CPU = new TH1F("nPFCluster_CPU","nPFCluster_CPU",1000,0.5,1000.5);
+  TH1F *nPFCluster_GPU = new TH1F("nPFCluster_GPU","nPFCluster_GPU",1000,0.5,1000.5);
 
   TH1F *enPFCluster_CPU = new TH1F("enPFCluster_CPU","enPFCluster_CPU",500,0,500);
   TH1F *enPFCluster_GPU = new TH1F("enPFCluster_GPU","enPFCluster_GPU",500,0,500);
@@ -119,6 +153,10 @@ public:
 
   TH1F *nRH_perPFCluster_CPU = new TH1F("nRH_perPFCluster_CPU","nRH_perPFCluster_CPU",101,-0.5,100.5);
   TH1F *nRH_perPFCluster_GPU = new TH1F("nRH_perPFCluster_GPU","nRH_perPFCluster_GPU",101,-0.5,100.5);
+
+  // Total number of rechit fractions in all PF clusters per event (includes double counting)
+  TH1F *nRH_perPFClusterTotal_CPU = new TH1F("nRH_perPFClusterTotal_CPU","nRH_perPFClusterTotal_CPU",8000,1000.5,9000.5);
+  TH1F *nRH_perPFClusterTotal_GPU = new TH1F("nRH_perPFClusterTotal_GPU","nRH_perPFClusterTotal_GPU",8000,1000.5,9000.5);
 
   TH1F *matched_pfcRh_CPU = new TH1F("matched_pfcRh_CPU", "matching seed pfcRh_CPU", 101,-0.5,100.5); 
   TH1F *matched_pfcRh_GPU = new TH1F("matched_pfcRh_GPU", "matching seed pfcRh_GPU", 101,-0.5,100.5);
@@ -154,6 +192,9 @@ public:
   Int_t numEvents = 0;
   Int_t nIter = 0;
   Int_t nEdges = 0;
+
+  Int_t nRHperPFCTotal_CPU = 0;
+  Int_t nRHperPFCTotal_GPU = 0;
 
   int maxSize = 100; // Max number of rechits per pf cluster
 

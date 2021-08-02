@@ -2,27 +2,30 @@
 #define PFClusterCudaECAL_h
 //#include <thrust/host_vector.h>
 //#include <thrust/device_vector.h>
+#include "RecoParticleFlow/PFClusterProducer/plugins/CudaPFCommon.h"
 #include <Eigen/Dense>
 #include <cuda.h>
 
 namespace PFClusterCudaECAL {
   
-  bool initializeCudaConstants(float h_showerSigma = 0.,
-                               float h_recHitEnergyNormEB = 0.,
-                               float h_recHitEnergyNormEE = 0., 
-                               float h_minFracToKeep = 0.,
-                               float h_minFracTot = 0.,
-                               int   h_maxIterations = 0,
-                               float h_stoppingTolerance = 0.,
-                               bool  h_excludeOtherSeeds = false, 
-                               float h_seedEThresholdEB = 0.,
-                               float h_seedEThresholdEE = 0.,
-                               float h_seedPt2ThresholdEB = 0.,
-                               float h_seedPt2hresholdEE = 0., 
-                               float h_topoEThresholdEB = 0., 
-                               float h_topoEThresholdEE = 0.,
-                               int   h_nNeigh = 0,
-                               int   h_maxSize = 50
+  bool initializeCudaConstants(const float h_showerSigma = 0.,
+                               const float h_recHitEnergyNormEB = 0.,
+                               const float h_recHitEnergyNormEE = 0., 
+                               const float h_minFracToKeep = 0.,
+                               const float h_minFracTot = 0.,
+                               const int   h_maxIterations = 0,
+                               const float h_stoppingTolerance = 0.,
+                               const bool  h_excludeOtherSeeds = false, 
+                               const float h_seedEThresholdEB = 0.,
+                               const float h_seedEThresholdEE = 0.,
+                               const float h_seedPt2ThresholdEB = 0.,
+                               const float h_seedPt2hresholdEE = 0., 
+                               const float h_topoEThresholdEB = 0., 
+                               const float h_topoEThresholdEE = 0.,
+                               const int   h_nNeigh = 0,
+                               const int   h_maxSize = 50,
+                               const PFClustering::common::PosCalcConfig h_posCalcConfig = PFClustering::common::PosCalcConfig(),
+                               const PFClustering::common::ECALPosDepthCalcConfig h_posConvCalcConfig = PFClustering::common::ECALPosDepthCalcConfig()
                                );
 
 
@@ -31,6 +34,9 @@ namespace PFClusterCudaECAL {
                 const float* __restrict__ pfrh_x,
                 const float* __restrict__ pfrh_y,
                 const float* __restrict__ pfrh_z,
+                const float* __restrict__ geomAxis_x,
+                const float* __restrict__ geomAxis_y,
+                const float* __restrict__ geomAxis_z,
                 const float* __restrict__ pfrh_energy,
                 const float* __restrict__ pfrh_pt2,
                 int* pfrh_isSeed,

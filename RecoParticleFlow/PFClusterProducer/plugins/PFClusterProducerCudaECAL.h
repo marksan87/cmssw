@@ -10,6 +10,7 @@
 
 #include "RecoParticleFlow/PFClusterProducer/interface/RecHitTopologicalCleanerBase.h"
 
+
 #include "RecoParticleFlow/PFClusterProducer/interface/SeedFinderBase.h"
 #include "RecoParticleFlow/PFClusterProducer/interface/InitialClusteringStepBase.h"
 #include "RecoParticleFlow/PFClusterProducer/interface/PFClusterBuilderBase.h"
@@ -19,6 +20,8 @@
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/device_unique_ptr.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/host_unique_ptr.h"
+
+#include "RecoParticleFlow/PFClusterProducer/plugins/CudaPFCommon.h"
 
 #include <TFile.h>
 #include <TH1F.h>
@@ -32,6 +35,7 @@
 #include <memory>
 #include <array>
 namespace PFClustering {
+ namespace ECAL {
   struct ConfigurationParameters {
     uint32_t maxRH = 2000;
     uint32_t maxPFCSize = 75;
@@ -84,6 +88,11 @@ namespace PFClustering {
       cms::cuda::device::unique_ptr<float[]> pcrh_frac;
       cms::cuda::device::unique_ptr<float[]> pcrh_fracSum;
 
+        // m_axis
+      cms::cuda::device::unique_ptr<float[]> rh_axis_x;
+      cms::cuda::device::unique_ptr<float[]> rh_axis_y;
+      cms::cuda::device::unique_ptr<float[]> rh_axis_z;
+
       cms::cuda::device::unique_ptr<int[]> rhcount;
       cms::cuda::device::unique_ptr<int[]> pfrh_topoId;
       cms::cuda::device::unique_ptr<int[]> pfrh_isSeed;
@@ -104,6 +113,13 @@ namespace PFClustering {
         pfrh_pt2 = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
         pcrh_frac = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH*config.maxPFCSize, cudaStream);
         pcrh_fracSum = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH*config.maxPFCSize, cudaStream);
+        
+        // Detector geometry
+        rh_axis_x = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
+        rh_axis_y = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
+        rh_axis_z = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
+       
+
         rhcount = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH*config.maxPFCSize, cudaStream);
         pfrh_topoId = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         pfrh_isSeed = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
@@ -116,6 +132,7 @@ namespace PFClustering {
         pfrh_passTopoThresh = cms::cuda::make_device_unique<bool[]>(sizeof(bool)*config.maxRH, cudaStream);
       }
   };
+ } // namespace ECAL
 } // namespace PFClustering
 
 class PFClusterProducerCudaECAL : public edm::stream::EDProducer<> {
@@ -137,9 +154,9 @@ public:
   void freeCudaMemory(int cudaDevice=0); 
   
   // inputs
-  std::vector< std::vector<double> > theThresh;
+  std::vector< std::vector<float> > theThresh;
   edm::EDGetTokenT<reco::PFRecHitCollection> _rechitsLabel;
-  edm::EDGetTokenT< std::vector<double> > _trash;
+  edm::EDGetTokenT< std::vector<float> > _trash;
  
 
   // options
@@ -164,24 +181,30 @@ public:
   // rechit physics quantities 
   std::vector<int>    __rh_mask;
   std::vector<int>    __rh_isSeed;
-  std::vector<double>  __rh_x;
-  std::vector<double>  __rh_y;
-  std::vector<double>  __rh_z;
-  std::vector<double>  __rh_eta;
-  std::vector<double>  __rh_phi;
-  std::vector<double> __rh_pt2;
+  std::vector<float>  __rh_x;
+  std::vector<float>  __rh_y;
+  std::vector<float>  __rh_z;
+  std::vector<float>  __rh_axis_x;
+  std::vector<float>  __rh_axis_y;
+  std::vector<float>  __rh_axis_z;
+  std::vector<float>  __rh_eta;
+  std::vector<float>  __rh_phi;
+  std::vector<float> __rh_pt2;
   // rechit neighbours4, neighbours8 vectors
   std::vector<std::vector<unsigned int>> __rh_neighbours8;
 
   TTree *clusterTree = new TTree("clusterTree", "clusterTree");
   
-  TH1F *nIterations = new TH1F("nIter","nIterations Topo Clustering", 26,-0.5,25.5);
-  TH2F *nIter_vs_nRH = new TH2F("nIternRH","nIterations vs num rechits Topo Clustering", 3001, -0.5, 3000.5, 26,-0.5,25.5);
-  TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",500,0,500);
-  TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",500,0,500);
+  TH1F *nIterations = new TH1F("nIter","nIterations Topo Clustering", 25, 0.5, 25.5);
+  TH2F *nIter_vs_nRH = new TH2F("nIternRH","nIterations vs num rechits Topo Clustering", 3000, 0.5, 3000.5, 25, 0.5, 25.5);
+  TH1F *nTopo_CPU = new TH1F("nTopo_CPU","nTopo_CPU",500,0.5,500.5);
+  TH1F *nTopo_GPU = new TH1F("nTopo_GPU","nTopo_GPU",500,0.5,500.5);
 
-  TH1F *sumSeed_CPU = new TH1F("sumSeed_CPU", "sumSeed_CPU",201, -0.5, 200.5);
-  TH1F *sumSeed_GPU = new TH1F("sumSeed_GPU", "sumSeed_GPU",201, -0.5, 200.5);
+  TH1F *topoSeeds_CPU = new TH1F("topoSeeds_CPU","topoSeeds_CPU",200,0.5,200.5);
+  TH1F *topoSeeds_GPU = new TH1F("topoSeeds_GPU","topoSeeds_GPU",200,0.5,200.5);
+
+  TH1F *sumSeed_CPU = new TH1F("sumSeed_CPU", "sumSeed_CPU",200, 0.5, 200.5);
+  TH1F *sumSeed_GPU = new TH1F("sumSeed_GPU", "sumSeed_GPU",200, 0.5, 200.5);
 
   TH1F *topoEn_CPU = new TH1F("topoEn_CPU", "topoEn_CPU", 500, 0, 500);
   TH1F *topoEn_GPU = new TH1F("topoEn_GPU", "topoEn_GPU", 500, 0, 500);
@@ -192,8 +215,8 @@ public:
   TH1F *topoPhi_CPU = new TH1F("topoPhi_CPU", "topoPhi_CPU", 100, -3.1415926, 3.1415926);
   TH1F *topoPhi_GPU = new TH1F("topoPhi_GPU", "topoPhi_GPU", 100, -3.1415926, 3.1415926);
 
-  TH1F *nPFCluster_CPU = new TH1F("nPFCluster_CPU","nPFCluster_CPU",501,-0.5,500.5);
-  TH1F *nPFCluster_GPU = new TH1F("nPFCluster_GPU","nPFCluster_GPU",501,-0.5,500.5);
+  TH1F *nPFCluster_CPU = new TH1F("nPFCluster_CPU","nPFCluster_CPU",1000,0.5,1000.5);
+  TH1F *nPFCluster_GPU = new TH1F("nPFCluster_GPU","nPFCluster_GPU",1000,0.5,1000.5);
 
   TH1F *enPFCluster_CPU = new TH1F("enPFCluster_CPU","enPFCluster_CPU",500,0,500);
   TH1F *enPFCluster_GPU = new TH1F("enPFCluster_GPU","enPFCluster_GPU",500,0,500);
@@ -206,6 +229,10 @@ public:
 
   TH1F *nRH_perPFCluster_CPU = new TH1F("nRH_perPFCluster_CPU","nRH_perPFCluster_CPU",101,-0.5,100.5);
   TH1F *nRH_perPFCluster_GPU = new TH1F("nRH_perPFCluster_GPU","nRH_perPFCluster_GPU",101,-0.5,100.5);
+  
+  // Total number of rechit fractions in all PF clusters per event (includes float counting)
+  TH1F *nRH_perPFClusterTotal_CPU = new TH1F("nRH_perPFClusterTotal_CPU","nRH_perPFClusterTotal_CPU",2000,0.5,2000.5);
+  TH1F *nRH_perPFClusterTotal_GPU = new TH1F("nRH_perPFClusterTotal_GPU","nRH_perPFClusterTotal_GPU",2000,0.5,2000.5);
 
   TH1F *matched_pfcRh_CPU = new TH1F("matched_pfcRh_CPU", "matching seed pfcRh_CPU", 101,-0.5,100.5);
   TH1F *matched_pfcRh_GPU = new TH1F("matched_pfcRh_GPU", "matching seed pfcRh_GPU", 101,-0.5,100.5);
@@ -240,14 +267,19 @@ public:
   Int_t nIter = 0;
   Int_t nEdges = 0;
 
+  Int_t nRHperPFCTotal_CPU = 0;
+  Int_t nRHperPFCTotal_GPU = 0;
+
 //  int maxRH = 2000;     // Max number of rechits
 //  int maxPFCSize = 75;  // Max number of rechits per pf cluster
 //  int maxNeighbors = 8; // Max number of rechit neighbors for edge list
 
-  PFClustering::ConfigurationParameters cudaConfig_;
-  PFClustering::InputDataCPU inputCPU;
-  PFClustering::InputDataGPU inputGPU;
-  
+  PFClustering::ECAL::ConfigurationParameters cudaConfig_;
+  PFClustering::ECAL::InputDataCPU inputCPU;
+  PFClustering::ECAL::InputDataGPU inputGPU;
+ 
+  PFClustering::common::PosCalcConfig posCalcConfig;
+  PFClustering::common::ECALPosDepthCalcConfig convergencePosCalcConfig;
 
   int *h_nIter = nullptr;
   int *d_nIter = nullptr;
