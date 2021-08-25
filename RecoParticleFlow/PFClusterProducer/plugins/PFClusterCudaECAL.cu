@@ -15,7 +15,7 @@
 using PFClustering::common::PFLayer;
 
 // Uncomment for debugging
-#define DEBUG_GPU_ECAL
+//#define DEBUG_GPU_ECAL
 
 
 constexpr int sizeof_float = sizeof(float);
@@ -1586,7 +1586,8 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 #endif
 
     //topoclustering 
-    topoClusterLinking<<<1, 1024 >>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, nIter);
+    //topoClusterLinking<<<1, 1024 >>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, nIter);
+    topoClusterLinking<<<1, 512>>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, nIter);
     topoClusterContraction<<<1, 512>>>(nRH, pfrh_topoId);
 
 #ifdef DEBUG_GPU_ECAL
@@ -1597,10 +1598,11 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventRecord(start);
 #endif
 
-    fastCluster_serialize<<<1, 1>>>(nRH, pfrh_x,  pfrh_y,  pfrh_z,  geomAxis_x, geomAxis_y, geomAxis_z, pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, neigh8_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount);
+    //fastCluster_serialize<<<1, 1>>>(nRH, pfrh_x,  pfrh_y,  pfrh_z,  geomAxis_x, geomAxis_y, geomAxis_z, pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, neigh8_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount);
+
     //fastCluster_original<<<1, 1>>>(nRH, pfrh_x,  pfrh_y,  pfrh_z,  geomAxis_x, geomAxis_y, geomAxis_z, pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
 
-/*
+
     dim3 grid( (nRH+32-1)/32, (nRH+32-1)/32 );
     dim3 block( 32, 32);
 
@@ -1615,7 +1617,7 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 #endif
 
     fastCluster_step2<<<grid, block>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-*/
+
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);

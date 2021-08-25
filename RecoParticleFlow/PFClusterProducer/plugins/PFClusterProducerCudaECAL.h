@@ -249,8 +249,11 @@ public:
   TH2F *nRh_CPUvsGPU = new TH2F("nRh_CPUvsGPU","nRh_CPUvsGPU",101,-0.5,100.5,101,-0.5,100.5);
   TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",50,0,500,50,0,500);
 
-  bool doComparison=true;
-  //bool doComparison=false;
+  //bool doComparison=true;
+  bool doComparison=false;
+
+  //bool onlyCPU = true;
+  bool onlyCPU = false; 
 
   TH1F *deltaSumSeed  = new TH1F("deltaSumSeed", "sumSeed_{GPU} - sumSeed_{CPU}", 201, -100.5, 100.5);
   TH1F *deltaRH  = new TH1F("deltaRH", "nRH_{GPU} - nRH_{CPU}", 41, -20.5, 20.5);
@@ -261,7 +264,7 @@ public:
   TH2F *coordinate = new TH2F("coordinate","coordinate",100,-3,3,100,-3.1415926,3.14159);
   TH1F *layer = new TH1F("layer","layer",7,0,7);
 
-  TH1F *timer = new TH1F("timer", "GPU kernel timer", 1000, 0.0, 1.0);
+  TH1F *hTimers = new TH1F("timers", "GPU kernel timers (Event > 9)", 9, -0.5, 8.5);
   std::array<float,9> GPU_timers;
   Int_t numEvents = 0;
   Int_t nIter = 0;

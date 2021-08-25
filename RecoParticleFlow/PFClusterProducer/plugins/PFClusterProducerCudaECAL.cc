@@ -25,18 +25,17 @@
 #endif
 
 // Uncomment to enable GPU debugging
-#define DEBUG_GPU_ECAL
+//#define DEBUG_GPU_ECAL
 
 // Uncomment to fill TTrees
-#define DEBUG_ECAL_TREES
+//#define DEBUG_ECAL_TREES
 
 // Uncomment to save cluster collections in TTree
-#define DEBUG_SAVE_CLUSTERS
+//#define DEBUG_SAVE_CLUSTERS
 
 PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& conf)
   : 
   _prodInitClusters(conf.getUntrackedParameter<bool>("prodInitialClusters", false)) {
-
   _rechitsLabel = consumes<reco::PFRecHitCollection>(conf.getParameter<edm::InputTag>("recHitsSource"));
 
 #ifdef DEBUG_ECAL_TREES
@@ -134,8 +133,6 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
     _energyCorrector = PFClusterEnergyCorrectorFactory::get()->create(cName, cConf);
   }
   
-
-  //bool doComparison = false;
 
   
   // Initialize Cuda device constant values
@@ -294,7 +291,11 @@ PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
   deltaEn->Write();
   deltaEta->Write();
   deltaPhi->Write();
-  timer->Write();
+  if (numEvents > 10) {
+      // Skip first 10 entries
+      hTimers->Scale(1. / (numEvents - 10.));
+  }
+  hTimers->Write();
   // MyFile->Close();
   delete MyFile;
 }
@@ -368,7 +369,7 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
 
   edm::Handle<reco::PFRecHitCollection> rechits;
   e.getByToken(_rechitsLabel, rechits);
-  std::cout<<"\n===== Now on event "<<numEvents<<" with "<<rechits->size()<<" ECAL rechits ====="<<std::endl; 
+  //std::cout<<"\n===== Now on event "<<numEvents<<" with "<<rechits->size()<<" ECAL rechits ====="<<std::endl; 
 
 #ifdef DEBUG_ECAL_TREES
   GPU_timers.fill(0.0);
@@ -789,7 +790,7 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
             std::cout<<"ECAL mismatch nRH:\tGPU:"<<(int)pfcx.recHitFractions().size()<<"\tCPU:"<<(int)pfc.recHitFractions().size()<<std::endl;
           }
           deltaRH->Fill((int)pfcx.recHitFractions().size() - (int)pfc.recHitFractions().size());
-          if (abs(pfcx.energy() - pfc.energy()) > 1e-4) {
+          if (abs(pfcx.energy() - pfc.energy()) > 1e-2) {
             std::cout<<"ECAL mismatch  En:\tGPU:"<<pfcx.energy()<<"\tCPU:"<<pfc.energy()<<std::endl;
           }
           deltaEn->Fill(pfcx.energy() - pfc.energy());
@@ -834,6 +835,10 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
   }
 #ifdef DEBUG_ECAL_TREES
   clusterTree->Fill();
+  if (numEvents > 9) {
+    for (int i = 0; i < (int)GPU_timers.size(); i++)
+      hTimers->Fill(i, GPU_timers[i]);
+  }
 #endif
   numEvents++;
   if (_prodInitClusters)

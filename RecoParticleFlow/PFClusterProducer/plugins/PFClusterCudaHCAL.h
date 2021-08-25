@@ -111,8 +111,18 @@ void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
                 float* pcrhfrac,
                 float* fracSum,
                 int* rhCount,
-				float (&timer)[8],
-                int* nIter
+				int* topoSeedCount,
+                int* topoRHCount,
+                int* seedFracOffsets,
+                int* topoSeedOffsets,
+                int* topoSeedList,
+                float4* pfc_pos,
+                float4* pfc_prevPos,
+                float* pfc_energy,
+                float (&timer)[8],
+                int* topoIter,
+                int* pfcIter,
+                int* pcrhFracSize
                 );
 
 
