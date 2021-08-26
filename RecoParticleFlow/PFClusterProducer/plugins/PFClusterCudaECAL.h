@@ -8,7 +8,7 @@
 
 namespace PFClusterCudaECAL {
   
-  bool initializeCudaConstants(const float h_showerSigma = 0.,
+  bool initializeCudaConstants(const float h_showerSigma2 = 0.,
                                const float h_recHitEnergyNormEB = 0.,
                                const float h_recHitEnergyNormEE = 0., 
                                const float h_minFracToKeep = 0.,

@@ -4374,7 +4374,7 @@ void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
     cudaEventRecord(start);
 #endif
    
-    //hcalFastCluster_optimizedLambdas<<<nRH, 256>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, neigh4_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfc_pos, pfc_prevPos, pfc_energy, pfcIter);
+    hcalFastCluster_optimizedLambdas<<<nRH, 256>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, neigh4_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfc_pos, pfc_prevPos, pfc_energy, pfcIter);
 
 
     //printRhfIndex<<<1,1>>>(pfrh_topoId, topoRHCount, seedFracOffsets, pcrhfracind);
@@ -4395,7 +4395,7 @@ void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
     
     //hcalFastCluster_older_serialize<<<1,1>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, neigh4_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount);
 
-
+/*
     dim3 grid2( (nRH+32-1)/32, (nRH+32-1)/32 );
     dim3 block2( 32, 32);
 
@@ -4411,7 +4411,7 @@ void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
 
     //hcalFastCluster_step2<<<grid2, block2>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount);
     hcalFastCluster_step2<<<grid2, block2>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList);
-
+*/
 #ifdef DEBUG_GPU_HCAL
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);   
