@@ -134,3 +134,7 @@ if 'MessageLogger' in process.__dict__:
     process.MessageLogger.FastReport = cms.untracked.PSet()
     process.MessageLogger.ThroughputService = cms.untracked.PSet()
     process.MessageLogger.cerr.FastReport = cms.untracked.PSet( limit = cms.untracked.int32( 10000000 ) )
+
+process.hltParticleFlowClusterECALUncorrectedUnseeded.pfClusterBuilder.maxIterations = 1
+process.hltParticleFlowClusterHBHE.pfClusterBuilder.maxIterations = 1
+
