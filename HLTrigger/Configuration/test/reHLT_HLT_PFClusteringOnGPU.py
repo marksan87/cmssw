@@ -125,6 +125,16 @@ process = customiseEarlyDelete(process)
 # End adding early deletion
 
 # KH
+process.load( "HLTrigger.Timer.FastTimerService_cfi" )
+if 'MessageLogger' in process.__dict__:
+    process.MessageLogger.TriggerSummaryProducerAOD = cms.untracked.PSet()
+    process.MessageLogger.L1GtTrigReport = cms.untracked.PSet()
+    process.MessageLogger.L1TGlobalSummary = cms.untracked.PSet()
+    process.MessageLogger.HLTrigReport = cms.untracked.PSet()
+    process.MessageLogger.FastReport = cms.untracked.PSet()
+    process.MessageLogger.ThroughputService = cms.untracked.PSet()
+    process.MessageLogger.cerr.FastReport = cms.untracked.PSet( limit = cms.untracked.int32( 10000000 ) )
+    
 process.hltParticleFlowClusterECALUncorrectedUnseeded = cms.EDProducer( "PFClusterProducerCudaECAL",
     pfClusterBuilder = cms.PSet( 
       minFracTot = cms.double( 1.0E-20 ),
