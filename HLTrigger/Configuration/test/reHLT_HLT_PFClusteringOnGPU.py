@@ -373,3 +373,6 @@ process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducerCudaHCAL"
     ),
     recHitsSource = cms.InputTag( "hltParticleFlowRecHitHBHE" )
 )
+
+process.hltParticleFlowClusterECALUncorrectedUnseeded.pfClusterBuilder.maxIterations = 1
+process.hltParticleFlowClusterHBHE.pfClusterBuilder.maxIterations = 1
