@@ -376,3 +376,4 @@ process.hltParticleFlowClusterHBHE = cms.EDProducer( "PFClusterProducerCudaHCAL"
 
 process.hltParticleFlowClusterECALUncorrectedUnseeded.pfClusterBuilder.maxIterations = 1
 process.hltParticleFlowClusterHBHE.pfClusterBuilder.maxIterations = 1
+process.FEVTDEBUGHLToutput.fileName = 'reHLT_HLT_PFClusteringOnGPU.root'
