@@ -430,9 +430,9 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   std::vector<int>                                      h_cuda_rhcount=std::vector<int>(rh_size,1);
 
   std::vector<float>                                    h_cuda_pcRhFrac(maxSize,-1.);
-  std::vector<int>                                    h_cuda_pfNeighEightInd(rechits->size()*8,-1);
-  std::vector<int>                                    h_cuda_pfNeighFourInd(rechits->size()*4,-1);
-  std::vector<int>                                      h_cuda_pcRhFracInd(rechits->size()*maxSize,-1);
+  std::vector<int>                                      h_cuda_pfNeighEightInd(rechits->size()*8,-1);
+  std::vector<int>                                      h_cuda_pfNeighFourInd(rechits->size()*4,-1);
+  std::vector<int>                                      h_cuda_pcRhFracInd(maxSize,-1);
 
   std::vector<float>                                    h_cuda_pfrh_x(rechits->size(),0);
   std::vector<float>                                    h_cuda_pfrh_y(rechits->size(),0);
@@ -446,7 +446,6 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 
   std::vector<int>                                      h_cuda_pfrh_edgeId(rechits->size()*8, -1);      // Rechit index for each edge 
   std::vector<int>                                      h_cuda_pfrh_edgeList(rechits->size()*8, -1);    // Sorted list of 8 neighbours for each rechit 
-
 
   int numbytes_float = rh_size*sizeof(float);
   int numbytes_int = rh_size*sizeof(int);

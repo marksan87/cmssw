@@ -400,7 +400,7 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
   std::vector<int>                                      h_cuda_pfNeighEightInd=std::vector<int>(rh_size*8,0);
   std::vector<int>                                      h_cuda_pcRhFracInd=std::vector<int>(rh_size*cudaConfig_.maxPFCSize,-1);
   std::vector<float>                                    h_cuda_fracsum=std::vector<float>(rh_size,0);
-  //std::vector<int>                                      h_cuda_rhcount=std::vector<int>(rh_size,1);
+  //std::vector<int>                                    h_cuda_rhcount=std::vector<int>(rh_size,1);
   std::vector<float>                                    h_cuda_pfrh_x=std::vector<float>(rh_size,0);
   std::vector<float>                                    h_cuda_pfrh_y=std::vector<float>(rh_size,0);
   std::vector<float>                                    h_cuda_pfrh_z=std::vector<float>(rh_size,0);
