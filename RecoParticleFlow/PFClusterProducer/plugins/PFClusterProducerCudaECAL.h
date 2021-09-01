@@ -249,8 +249,8 @@ public:
   TH2F *nRh_CPUvsGPU = new TH2F("nRh_CPUvsGPU","nRh_CPUvsGPU",101,-0.5,100.5,101,-0.5,100.5);
   TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",50,0,500,50,0,500);
 
-  //bool doComparison=true;
-  bool doComparison=false;
+  bool doComparison=true;
+  //bool doComparison=false;
 
   //bool onlyCPU = true;
   bool onlyCPU = false; 

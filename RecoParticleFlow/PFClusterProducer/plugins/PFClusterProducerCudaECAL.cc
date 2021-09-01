@@ -390,9 +390,11 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
     cleaner->clean(rechits, mask);
   }
 
+#ifdef DEBUG_ECAL_TREES
   for (auto isMasked: mask) {
     __rh_mask.push_back(isMasked);
   }
+#endif
 
   size_t rh_size = 2000;
 
@@ -439,9 +441,6 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
     h_rh_axis_y[p] = axis.y();  
     h_rh_axis_z[p] = axis.z();  
     
-    __rh_axis_x.push_back(axis.x());  
-    __rh_axis_y.push_back(axis.y());  
-    __rh_axis_z.push_back(axis.z());  
 
 
     h_cuda_pfrh_x[p]=rh.position().x();
@@ -451,13 +450,19 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
     h_cuda_pfrh_pt2[p]=rh.pt2();
     h_cuda_pfrh_layer[p]=(int)rh.layer();
     h_cuda_pfrh_topoId[p]=p;
-    
+
+#ifdef DEBUG_ECAL_TREES
+    __rh_axis_x.push_back(axis.x());  
+    __rh_axis_y.push_back(axis.y());  
+    __rh_axis_z.push_back(axis.z());  
     __rh_x.push_back(h_cuda_pfrh_x[p]);
     __rh_y.push_back(h_cuda_pfrh_y[p]);
     __rh_z.push_back(h_cuda_pfrh_z[p]);
     __rh_eta.push_back(rh.positionREP().eta());
     __rh_phi.push_back(rh.positionREP().phi());
     __rh_pt2.push_back(h_cuda_pfrh_pt2[p]);
+#endif
+
     std::vector<unsigned int> n8;
     auto theneighboursEight = rh.neighbours8();
     int z = 0;
@@ -479,7 +484,9 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
       }
     
     p++;
+#ifdef DEBUG_ECAL_TREES
     __rh_neighbours8.push_back(n8);
+#endif
   }//end of rechit loop  
 
   nEdges = totalNeighbours;
@@ -654,14 +661,17 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
   {
     std::vector<bool> seedable(rechits->size(), false);
     _seedFinder->findSeeds(rechits, mask, seedable);
+#ifdef DEBUG_ECAL_TREES
     for (auto isSeed: seedable) {
       __rh_isSeed.push_back((int)isSeed);
     }
+#endif
     auto initialClusters = std::make_unique<reco::PFClusterCollection>();
     _initialClustering->buildClusters(rechits, mask, seedable, *initialClusters);
     LOGVERB("PFClusterProducer::produce()") << *_initialClustering;
+#if defined DEBUG_ECAL_TREES && defined DEBUG_SAVE_CLUSTERS
     __initialClusters = *initialClusters;  // For TTree
-
+#endif
     int topoRhCount=0;
     int clusterCount = 0;
     for(auto pfc : *initialClusters)
@@ -759,7 +769,9 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
     }
    
     int totalRHPF_CPU = 0, totalRHPF_GPU = 0;
-    __pfClusters = *pfClusters;  // For TTree  
+#if defined DEBUG_ECAL_TREES && defined DEBUG_SAVE_CLUSTERS
+    __pfClusters = *pfClusters;  // For TTree
+#endif
     for(auto pfc : *pfClusters)
     {
       nRH_perPFCluster_CPU->Fill(pfc.recHitFractions().size());
@@ -818,7 +830,9 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
     nRHperPFCTotal_CPU = totalRHPF_CPU;
     nRHperPFCTotal_GPU = totalRHPF_GPU;
 
+#if defined DEBUG_ECAL_TREES && defined DEBUG_SAVE_CLUSTERS
     __pfClustersFromCuda = *pfClustersFromCuda;      // For TTree
+#endif
     for(auto pfc : *pfClustersFromCuda)
     {
   	    nRH_perPFCluster_GPU->Fill(pfc.recHitFractions().size());

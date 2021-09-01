@@ -26,8 +26,7 @@ namespace PFClusterCudaHCAL {
                                const float (&h_topoEThresholdEE_vec)[7] = {0.,0.,0.,0.,0.,0.,0.},
                                const PFClustering::common::TimeResConsts endcapTimeRes = PFClustering::common::TimeResConsts(),
                                const PFClustering::common::TimeResConsts barrelTimeRes = PFClustering::common::TimeResConsts(),
-                               const int   h_nNeigh = 0,
-                               const int   h_maxSize = 100
+                               const int   h_nNeigh = 0
                                );
 
 

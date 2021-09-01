@@ -64,7 +64,6 @@ namespace PFClusterCudaHCAL {
 
   __constant__ int nNT = 8;  // Number of neighbors considered for topo clustering
   __constant__ int nNeigh;
-  __constant__ int maxSize;
  
   //int nTopoLoops = 100;
   int nTopoLoops = 35;
@@ -88,8 +87,7 @@ namespace PFClusterCudaHCAL {
                                const float (&h_topoEThresholdEE_vec)[7],
                                const PFClustering::common::TimeResConsts endcapTimeResConsts,
                                const PFClustering::common::TimeResConsts barrelTimeResConsts,
-                               const int   h_nNeigh,
-                               const int   h_maxSize
+                               const int   h_nNeigh
                            )
   {
      bool status = true;
@@ -238,14 +236,6 @@ namespace PFClusterCudaHCAL {
      std::cout<<"nNeigh read from symbol: "<<ival<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(maxSize, &h_maxSize, sizeof_int));
-#ifdef DEBUG_GPU_HCAL
-     // Read back the value
-     ival = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&ival, maxSize, sizeof_int));
-     std::cout<<"maxSize read from symbol: "<<ival<<std::endl;
-#endif
-    
      // Endcap time resolution
      status &= cudaCheck(cudaMemcpyToSymbolAsync(corrTermLowEE, &endcapTimeResConsts.corrTermLowE, sizeof_float));
 #ifdef DEBUG_GPU_HCAL
@@ -491,7 +481,9 @@ static __device__ __forceinline__ float atomicMaxF(float *address, float val)
    int i = threadIdx.x+blockIdx.x*blockDim.x;
 
    if(i<size) {
-     // Initialize seedFracOffsets and rhCount arrays
+     // Initialize arrays
+     pfrh_topoId[i] = i;
+     pfrh_isSeed[i] = 0;
      rhCount[i] = 0;
      topoSeedCount[i] = 0;
      topoRHCount[i] = 0;
@@ -3918,6 +3910,8 @@ __global__ void topoClusterContraction(size_t size,
         notDone = 0;
         totalSeedOffset = 0;
         totalSeedFracOffset = 0;
+        *pcrhFracSize = 0;
+        //atomicSub_system(pcrhFracSize, *pcrhFracSize);
     }
     __syncthreads();
 
@@ -4030,6 +4024,8 @@ __global__ void topoClusterContraction(size_t size,
     if (threadIdx.x == 0) {
         //printf("--------> totalSeedFracOffset = %d\n", totalSeedFracOffset);
         *pcrhFracSize = totalSeedFracOffset;
+
+        //atomicAdd_system(pcrhFracSize, totalSeedFracOffset); 
     }
     
 }
