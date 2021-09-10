@@ -278,13 +278,14 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
   }
   
   //cudaSetDeviceFlags(cudaDeviceMapHost);
-  if (!PFClusterProducerCudaHCAL::initializeCudaMemory()) {
-    // Problem allocating Cuda memory
-    std::cout<<"Unable to allocate Cuda memory"<<std::endl;
-    return;
-  }
+  PFClusterProducerCudaHCAL::initializeCudaMemory();
+//  if (!PFClusterProducerCudaHCAL::initializeCudaMemory()) {
+//    // Problem allocating Cuda memory
+//    std::cout<<"Unable to allocate Cuda memory"<<std::endl;
+//    return;
+//  }
 
-  cudaStream_t cudaStream = 0;  // TODO: Get from cms::cuda::ScopedContextAcquire
+  // TODO: Get cudaStream from cms::cuda::ScopedContextAcquire
   inputCPU.allocate(cudaConfig_, cudaStream);
   inputGPU.allocate(cudaConfig_, cudaStream);
   
@@ -306,6 +307,7 @@ PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
 #ifdef DEBUG_HCAL_TREES  
   clusterTree->Write();
 #endif
+  nFracs_vs_nRH->Write();
   pfcIterations->Write();
   pfcIter_vs_nRHTopo->Write();
   pfcIter_vs_nSeedsTopo->Write();
@@ -364,29 +366,14 @@ PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
 }
 
 
-bool PFClusterProducerCudaHCAL::initializeCudaMemory(int cudaDevice) {
-  cudaMallocManaged(&cuda_pcrhFracSize, sizeof(int));
-//  h_topoIter = new int(0);
-//  cudaCheck(cudaMalloc(&d_topoIter, sizeof(int)));
-//  
-//  h_pcrhFracSize = new int(0);
-//  cudaCheck(cudaMalloc(&d_pcrhFracSize, sizeof(int)));
-//
-//  h_cuda_pfc_iter = new int(0);
-//  cudaCheck(cudaMalloc(&d_cuda_pfc_iter, sizeof(int)));
-
-  return true;
+void PFClusterProducerCudaHCAL::initializeCudaMemory(int cudaDevice) {
+  cudaCheck(cudaMallocManaged(&cuda_pcrhFracSize, sizeof(int)));
+  cudaCheck(cudaMallocManaged(&cuda_topoIter, sizeof(int)));
 }
 
 void PFClusterProducerCudaHCAL::freeCudaMemory(int cudaDevice) {
-  cudaFree(cuda_pcrhFracSize);
-//    cudaCheck(cudaFree(d_topoIter));
-//    cudaCheck(cudaFree(d_pcrhFracSize));
-//    cudaCheck(cudaFree(d_cuda_pfc_iter));
-//
-//    delete h_topoIter;
-//    delete h_pcrhFracSize;
-//    delete h_cuda_pfc_iter;
+  cudaCheck(cudaFree(cuda_pcrhFracSize));
+  cudaCheck(cudaFree(cuda_topoIter));
 }
 
 
@@ -405,7 +392,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 
   edm::Handle<reco::PFRecHitCollection> rechits;
   e.getByToken(_rechitsLabel, rechits);
-  std::cout<<"\n===== Now on event "<<numEvents<<" with "<<rechits->size()<<" HCAL rechits ====="<<std::endl;
+//  std::cout<<"\n===== Now on event "<<numEvents<<" with "<<rechits->size()<<" HCAL rechits ====="<<std::endl;
 
 #ifdef DEBUG_HCAL_TREES
   GPU_timers.fill(0.0);
@@ -550,7 +537,6 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 					      kernelTimers
                           );
      */
-    std::cout<<"Now on GPU clustering"<<std::endl; 
      PFClusterCudaHCAL::PFRechitToPFCluster_HCAL_CCLClustering((int)rh_size, 
 					      (int)totalNeighbours,
                           inputGPU.pfrh_x.get(),  
@@ -581,22 +567,17 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
                           inputGPU.pfc_prevPos4.get(),
                           inputGPU.pfc_energy.get(),
                           kernelTimers,
-                          outputGPU.topoIter.get(),
+                          cuda_topoIter,
                           outputGPU.pfc_iter.get(),
                           cuda_pcrhFracSize
-                          //outputGPU.pcrhFracSize.get()
                           );
 
-    std::cout<<"Finished GPU clustering"<<std::endl; 
-     cudaCheck(cudaMemcpyAsync(outputCPU.topoIter.get(), outputGPU.topoIter.get(), sizeof(int), cudaMemcpyDeviceToHost));
+//     cudaCheck(cudaMemcpyAsync(outputCPU.topoIter.get(), outputGPU.topoIter.get(), sizeof(int), cudaMemcpyDeviceToHost));
      //cudaCheck(cudaMemcpyAsync(outputCPU.pcrhFracSize.get(), outputGPU.pcrhFracSize.get(), sizeof(int), cudaMemcpyDeviceToHost));
-     cudaCheck(cudaMemcpyAsync(outputCPU.pfc_iter.get(), outputGPU.pfc_iter.get(), numbytes_int, cudaMemcpyDeviceToHost));
 
+  if (cudaStreamQuery(cudaStream) != cudaSuccess) cudaCheck(cudaStreamSynchronize(cudaStream));
   // Total size of allocated rechit fraction arrays (includes some extra padding for rechits that don't end up passing cuts)
-  //nFracs = *outputCPU.pcrhFracSize.get();
-  if (cudaStreamQuery(0) != cudaSuccess) cudaStreamSynchronize(0);
   nFracs = *cuda_pcrhFracSize;
-  std::cout<<"--> Total rechit fractions: "<<nFracs<<std::endl;
 
 #ifdef DEBUG_GPU_HCAL
   GPU_timers[1] = kernelTimers[0];  // Seeding
@@ -618,6 +599,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaEventRecord(start);
 #endif
   
+  cudaCheck(cudaMemcpyAsync(outputCPU.pfc_iter.get(), outputGPU.pfc_iter.get(), numbytes_int, cudaMemcpyDeviceToHost));
   cudaCheck(cudaMemcpyAsync(outputCPU.topoSeedCount.get()  , outputGPU.topoSeedCount.get()  , numbytes_int , cudaMemcpyDeviceToHost));
   cudaCheck(cudaMemcpyAsync(outputCPU.topoRHCount.get()    , outputGPU.topoRHCount.get()  , numbytes_int , cudaMemcpyDeviceToHost));
   cudaCheck(cudaMemcpyAsync(outputCPU.seedFracOffsets.get()    , outputGPU.seedFracOffsets.get()  , numbytes_int , cudaMemcpyDeviceToHost));
@@ -637,8 +619,10 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaEventElapsedTime(&GPU_timers[5], start, stop);
 //  std::cout<<"(HCAL) Copy results from GPU: "<<GPU_timers[5]<<" ms"<<std::endl;
 #endif
+  if (cudaStreamQuery(cudaStream) != cudaSuccess) cudaCheck(cudaStreamSynchronize(cudaStream));
 
-  if (cudaStreamQuery(0) != cudaSuccess) cudaStreamSynchronize(0);
+#ifdef DEBUG_GPU_HCAL
+  nFracs_vs_nRH->Fill(rh_size, nFracs);
   for (int topoId = 0; topoId < (int)rh_size; topoId++) {
     int nPFCIter = outputCPU.pfc_iter[topoId]; // Number of iterations for PF clustering to converge
     int nSeeds = outputCPU.topoSeedCount[topoId];
@@ -657,6 +641,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
         pfcIter_vs_nFracsTopo->Fill(nFracsTopo, nPFCIter);   // Total number of rechit fractions for a given topo cluster
     }
   }
+#endif
 /* 
     // Test seeds here
     if (doComparison) {
@@ -707,7 +692,7 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   }
   
 
-  topoIter = *outputCPU.topoIter.get();
+  topoIter = *cuda_topoIter;
   topoIterations->Fill(topoIter);
   topoIter_vs_nRH->Fill(rh_size, topoIter);
 

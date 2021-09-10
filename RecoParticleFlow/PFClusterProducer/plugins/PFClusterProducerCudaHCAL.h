@@ -86,8 +86,8 @@ namespace PFClustering {
       cms::cuda::host::unique_ptr<int[]> topoSeedList;
 
       cms::cuda::host::unique_ptr<int[]> pfc_iter; // Iterations per pf cluster (by seed index)
-      cms::cuda::host::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
-      cms::cuda::host::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
+//      cms::cuda::host::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
+//      cms::cuda::host::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
       
       void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0 /* default Cuda stream */) {
         pfrh_topoId = cms::cuda::make_host_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
@@ -103,8 +103,8 @@ namespace PFClustering {
         topoSeedList = cms::cuda::make_host_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         
         pfc_iter = cms::cuda::make_host_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
-        topoIter = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
-        pcrhFracSize = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
+//        topoIter = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
+//        pcrhFracSize = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
       }
   };
 
@@ -168,8 +168,8 @@ namespace PFClustering {
       cms::cuda::device::unique_ptr<int[]> topoSeedList;
 
       cms::cuda::device::unique_ptr<int[]> pfc_iter; // Iterations per pf cluster (by seed index)
-      cms::cuda::device::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
-      cms::cuda::device::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
+//      cms::cuda::device::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
+//      cms::cuda::device::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
       
       void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0 /* default Cuda stream */) {
         pfrh_topoId = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
@@ -185,8 +185,8 @@ namespace PFClustering {
         topoSeedList = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         
         pfc_iter = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
-        topoIter = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
-        pcrhFracSize = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
+//        topoIter = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
+//        pcrhFracSize = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
       }
   };
  } // namespace HCAL
@@ -208,7 +208,7 @@ public:
   //void endJob();
   //  void beginStream(edm::StreamID);
  
-  bool initializeCudaMemory(int cudaDevice=0);
+  void initializeCudaMemory(int cudaDevice=0);
   void freeCudaMemory(int cudaDevice=0);
   
   // inputs
@@ -357,22 +357,10 @@ public:
   PFClustering::HCAL::OutputDataGPU outputGPU;
 
   int* cuda_pcrhFracSize = nullptr;
+  int* cuda_topoIter = nullptr;
 
-/*
-  bool *h_notDone = nullptr;    // Host pointer to flag in pinned memory
-  bool *d_notDone = nullptr;    // Device pointer to flag in pinned memory
-
-  int *h_topoIter = nullptr;
-  int *d_topoIter = nullptr;
- 
-  // PF clustering iterations
-  int *h_cuda_pfc_iter = nullptr;
-  int *d_cuda_pfc_iter = nullptr;
-
-  // Number of entries in pcrhFrac arrays that need to be copied back to host
-  int *h_pcrhFracSize = nullptr;
-  int *d_pcrhFracSize = nullptr;
-*/
+  // Set to default Cuda stream (0) for now
+  cudaStream_t cudaStream = 0;
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaHCAL);

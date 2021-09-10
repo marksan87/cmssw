@@ -9,8 +9,8 @@
 namespace PFClusterCudaECAL {
   
   bool initializeCudaConstants(const float h_showerSigma2 = 0.,
-                               const float h_recHitEnergyNormEB = 0.,
-                               const float h_recHitEnergyNormEE = 0., 
+                               const float h_recHitEnergyNormInvEB = 0.,
+                               const float h_recHitEnergyNormInvEE = 0., 
                                const float h_minFracToKeep = 0.,
                                const float h_minFracTot = 0.,
                                const int   h_maxIterations = 0,
@@ -51,8 +51,21 @@ namespace PFClusterCudaECAL {
                 float* pcrhfrac,
                 float* fracSum,
                 int* rhCount,
+                int* topoSeedCount,
+                int* topoRHCount,
+                int* seedFracOffsets,
+                int* topoSeedOffsets,
+                int* topoSeedList,
+                float4* pfc_pos4,
+                float4* pfc_prevPos4,
+                float4* pfc_linearPos4,
+                float4* pfc_convPos4,
+                float* pfc_energy,
+                float* pfc_clusterT0,
                 float (&timer)[8],
-                int* nIter
+                int* topoIter,
+                int* pfcIter,
+                int* pcrhFracSize
                 );
 
   void PFRechitToPFCluster_ECALV2(size_t size, 

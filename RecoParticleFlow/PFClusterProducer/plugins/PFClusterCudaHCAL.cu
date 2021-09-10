@@ -1539,7 +1539,7 @@ __global__ void hcalFastCluster_optimizedLambdas(size_t nRH,
             printf("\n--- Now on iter %d for topoId %d ---\n", iter, topoId);
         }
 
-        // Reset fracSum and rhCount
+        // Reset fracSum, rhCount, pcrhfrac
         for (int r = threadIdx.x + 1; r < nRHNotSeed; r += gridStride) {
             int j = getRhFracIdx(0, r);
             fracSum[j] = 0.;
@@ -1749,7 +1749,7 @@ __global__ void hcalFastCluster_optimizedLambdas(size_t nRH,
         if (threadIdx.x == 0) notDone = false;
         __syncthreads();
      }
-    }
+    } // end while loop
     if (threadIdx.x == 0) pfcIter[topoId] = iter;
   }
   else if (threadIdx.x == 0 && (topoRHCount[topoId] == 1 || (topoRHCount[topoId] > 1 && topoRHCount[topoId] == topoSeedCount[topoId]))) {
@@ -3911,7 +3911,6 @@ __global__ void topoClusterContraction(size_t size,
         totalSeedOffset = 0;
         totalSeedFracOffset = 0;
         *pcrhFracSize = 0;
-        //atomicSub_system(pcrhFracSize, *pcrhFracSize);
     }
     __syncthreads();
 
@@ -3928,8 +3927,6 @@ __global__ void topoClusterContraction(size_t size,
         __syncthreads();
         
         atomicAdd(&notDone, (int)threadNotDone);
-        //if (threadNotDone) notDone = true;
-        //notDone |= threadNotDone;
         __syncthreads();
 
     } while (notDone);
@@ -3958,7 +3955,6 @@ __global__ void topoClusterContraction(size_t size,
         }
     }
     __syncthreads();
-    //if (threadIdx.x == 0) printf("Total seeds found: %d\n", totalSeedOffset); 
     
 
     // Fill arrays of seed indicies per topo ID
@@ -3972,38 +3968,6 @@ __global__ void topoClusterContraction(size_t size,
     }
     __syncthreads();
 
-    /*
-    if (threadIdx.x == 0) {
-        printf("topoSeedOffsets = \n[");
-        for (int i = 0; i < size; i++) {
-            if (i != 0) printf(", ");
-            printf("%d", topoSeedOffsets[i]);
-        }
-        printf("]\n\n");
-        
-        printf("topoSeedList = \n[");
-        for (int i = 0; i < size; i++) {
-            if (i != 0) printf(", ");
-            printf("%d", topoSeedList[i]);
-        }
-        printf("]\n\n");
-    }
-    */
-    /* 
-    if (threadIdx.x == 0) {
-        for (int rhIdx = 0; rhIdx < size; rhIdx++) {
-            int topoId = pfrh_parent[rhIdx];
-            if (pfrh_isSeed[rhIdx] && topoId > -1) {
-                // Add offset for this PF cluster seed
-                seedFracOffsets[rhIdx] = totalSeedOffset;
-                // Allot the total number of rechits for this topo cluster for rh fractions
-                totalSeedOffset += topoRHCount[topoId];
-            }
-        }
-        printf("--------> totalSeedOffset = %d\n", totalSeedOffset);
-    }
-    */
-    
     // Determine seed offsets for rechit fraction array
     for (int rhIdx = threadIdx.x; rhIdx < size; rhIdx += blockDim.x) {
         rhCount[rhIdx] = 1; // Reset this counter array
@@ -4011,7 +3975,6 @@ __global__ void topoClusterContraction(size_t size,
         int topoId = pfrh_parent[rhIdx];
         if (pfrh_isSeed[rhIdx] && topoId > -1) {
             // Allot the total number of rechits for this topo cluster for rh fractions
-            //printf("rechit %d is a seed for topoId %d with topoRHCount = %d\n", rhIdx, topoId, topoRHCount[topoId]);
             int offset = atomicAdd(&totalSeedFracOffset, topoRHCount[topoId]);
             
             // Add offset for this PF cluster seed
@@ -4022,12 +3985,8 @@ __global__ void topoClusterContraction(size_t size,
     }
     __syncthreads();
     if (threadIdx.x == 0) {
-        //printf("--------> totalSeedFracOffset = %d\n", totalSeedFracOffset);
         *pcrhFracSize = totalSeedFracOffset;
-
-        //atomicAdd_system(pcrhFracSize, totalSeedFracOffset); 
     }
-    
 }
 
 __global__ void fillRhfIndex(size_t nRH,

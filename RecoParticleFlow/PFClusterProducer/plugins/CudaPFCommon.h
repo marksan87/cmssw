@@ -57,23 +57,23 @@ namespace PFClustering {
 
     struct PosCalcConfig {
         float minAllowedNormalization;
-        float logWeightDenominator;
+        float logWeightDenominatorInv;
         float minFractionInCalc;
         TimeResConsts timeResEndcap;
         TimeResConsts timeResBarrel;
 
         PosCalcConfig() :
             minAllowedNormalization(-1.0),
-            logWeightDenominator(-1.0),
+            logWeightDenominatorInv(-1.0),
             minFractionInCalc(-1.0) {};
 
         PosCalcConfig(float _minAllowedNormalization,
-                      float _logWeightDenominator,
+                      float _logWeightDenominatorInv,
                       float _minFractionInCalc,
                       TimeResConsts _timeResEndcap,
                       TimeResConsts _timeResBarrel) :
             minAllowedNormalization(_minAllowedNormalization),
-            logWeightDenominator(_logWeightDenominator),
+            logWeightDenominatorInv(_logWeightDenominatorInv),
             minFractionInCalc(_minFractionInCalc),
             timeResEndcap(_timeResEndcap),
             timeResBarrel(_timeResBarrel) {};

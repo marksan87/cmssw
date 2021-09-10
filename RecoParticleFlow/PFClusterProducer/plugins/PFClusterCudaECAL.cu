@@ -15,7 +15,7 @@
 using PFClustering::common::PFLayer;
 
 // Uncomment for debugging
-//#define DEBUG_GPU_ECAL
+#define DEBUG_GPU_ECAL
 
 
 constexpr int sizeof_float = sizeof(float);
@@ -27,8 +27,8 @@ constexpr const float preshowerEndEta = 2.6;
 namespace PFClusterCudaECAL {
 
   __constant__ float showerSigma2;
-  __constant__ float recHitEnergyNormEB;
-  __constant__ float recHitEnergyNormEE;
+  __constant__ float recHitEnergyNormInvEB;
+  __constant__ float recHitEnergyNormInvEE;
   __constant__ float minFracToKeep;
   __constant__ float minFracTot;
   __constant__ float stoppingTolerance;
@@ -49,7 +49,7 @@ namespace PFClusterCudaECAL {
 
   // Generic position calc constants
   __constant__ float minAllowedNormalization;
-  __constant__ float logWeightDenominator; 
+  __constant__ float logWeightDenominatorInv; 
   __constant__ float minFractionInCalc;
 
   // Convergence position calc constants
@@ -65,8 +65,8 @@ namespace PFClusterCudaECAL {
   
   
   bool initializeCudaConstants(const float h_showerSigma2,
-                               const float h_recHitEnergyNormEB,
-                               const float h_recHitEnergyNormEE,
+                               const float h_recHitEnergyNormInvEB,
+                               const float h_recHitEnergyNormInvEE,
                                const float h_minFracToKeep,
                                const float h_minFracTot,
                                const int   h_maxIterations,
@@ -94,20 +94,20 @@ namespace PFClusterCudaECAL {
      std::cout<<"showerSigma2 read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEB, &h_recHitEnergyNormEB, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormInvEB, &h_recHitEnergyNormInvEB, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, recHitEnergyNormEB, sizeof_float));
-     std::cout<<"recHitEnergyNormEB read from symbol: "<<val<<std::endl;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, recHitEnergyNormInvEB, sizeof_float));
+     std::cout<<"recHitEnergyNormInvEB read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormEE, &h_recHitEnergyNormEE, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormInvEE, &h_recHitEnergyNormInvEE, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, recHitEnergyNormEE, sizeof_float));
-     std::cout<<"recHitEnergyNormEE read from symbol: "<<val<<std::endl;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, recHitEnergyNormInvEE, sizeof_float));
+     std::cout<<"recHitEnergyNormInvEE read from symbol: "<<val<<std::endl;
 #endif
 
      status &= cudaCheck(cudaMemcpyToSymbolAsync(minFracToKeep, &h_minFracToKeep, sizeof_float)); 
@@ -223,12 +223,12 @@ namespace PFClusterCudaECAL {
      std::cout<<"minAllowedNormalization read from symbol: "<<val<<std::endl;
 #endif  
      
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(logWeightDenominator, &h_posCalcConfig.logWeightDenominator, sizeof_float)); 
+     status &= cudaCheck(cudaMemcpyToSymbolAsync(logWeightDenominatorInv, &h_posCalcConfig.logWeightDenominatorInv, sizeof_float)); 
 #ifdef DEBUG_GPU_ECAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, logWeightDenominator, sizeof_float));
-     std::cout<<"logWeightDenominator read from symbol: "<<val<<std::endl;
+     status &= cudaCheck(cudaMemcpyFromSymbol(&val, logWeightDenominatorInv, sizeof_float));
+     std::cout<<"logWeightDenominatorInv read from symbol: "<<val<<std::endl;
 #endif  
      
      status &= cudaCheck(cudaMemcpyToSymbolAsync(minFractionInCalc, &h_posCalcConfig.minFractionInCalc, sizeof_float)); 
@@ -350,7 +350,6 @@ __device__ __forceinline__ float dR2(float4 pos1, float4 pos2) {
 
 __global__ void seedingTopoThreshKernel_ECAL(
                     size_t size,
-                    int*  rhCount,
                     float* fracSum,
                     const float* __restrict__ pfrh_energy,
                     const float* __restrict__ pfrh_pt2,
@@ -358,15 +357,32 @@ __global__ void seedingTopoThreshKernel_ECAL(
                     int*   pfrh_topoId,
                     bool*  pfrh_passTopoThresh,
                     const int* __restrict__ pfrh_layer,
-                    const int* __restrict__ neigh8_Ind
+                    const int* __restrict__ neigh8_Ind,
+                    int*  rhCount,
+                    int* topoSeedCount,
+                    int* topoRHCount,
+                    int* seedFracOffsets,
+                    int* topoSeedOffsets,
+                    int* topoSeedList,
+                    int* pfcIter
                     ) {
 
    int i = threadIdx.x+blockIdx.x*blockDim.x;
 
    if(i<size) {
-     // Initialize rhCount
-     rhCount[i] = 1;
+     // Initialize arrays
+     pfrh_topoId[i] = i;
+     pfrh_isSeed[i] = 0;
+     rhCount[i] = 0;
      fracSum[i] = 0.;
+
+     topoSeedCount[i] = 0;
+     topoRHCount[i] = 0;
+     seedFracOffsets[i] = -1;
+     topoSeedOffsets[i] = -1;
+     topoSeedList[i] = -1;
+     pfcIter[i] = -1;
+
 
      // Seeding threshold test
      if ( (pfrh_layer[i] == PFLayer::ECAL_BARREL && pfrh_energy[i]>seedEThresholdEB && pfrh_pt2[i]>seedPt2ThresholdEB) || 
@@ -442,7 +458,6 @@ __global__ void seedingTopoThreshKernel_ECAL(
 
    //int i = threadIdx.x+blockIdx.x*blockDim.x;
 
-   //if(i<size) {        
    for (int i=0; i<size; i++) {
      if( ( pfrh_layer[i] == PFLayer::ECAL_BARREL && pfrh_energy[i]>seedEThresholdEB && pfrh_pt2[i]>seedPt2ThresholdEB) || ( (pfrh_layer[i] == PFLayer::ECAL_ENDCAP) && pfrh_energy[i]>seedEThresholdEE && pfrh_pt2[i]>seedPt2ThresholdEE) )
        {
@@ -552,7 +567,488 @@ __global__ void seedingTopoThreshKernel_ECAL(
             }
          }
       } 
+}
+
+
+__global__ void printFracs(size_t nRH,
+                           float* pcrhfrac,
+                           int* pcrhfracind,
+                           int* topoSeedCount,
+                           int* topoRHCount,
+                           int* seedFracOffsets,
+                           int* topoSeedOffsets,
+                           int* topoSeedList) {
+
+    for (int topoId = 0; topoId < (int)nRH; topoId++) {
+        if (topoSeedCount[topoId] <= 0) continue;
+        int nSeeds = topoSeedCount[topoId];
+        int nRHTopo = topoRHCount[topoId];
+        int nRHNotSeed = nRHTopo - nSeeds + 1;  // 1 + (# rechits per topoId that are NOT seeds)
+        int topoSeedBegin = topoSeedOffsets[topoId];
+
+        auto getSeedRhIdx = [&] (int seedNum) {
+            if (seedNum > topoSeedCount[topoId]) {
+                printf("PROBLEM with seedNum = %d > nSeeds = %d", seedNum, nSeeds);
+                return -1;
+            }
+            return topoSeedList[topoSeedBegin + seedNum];
+        };
+
+        auto getRhFracIdx = [&] (int seedNum, int rhNum) {
+            int seedIdx = topoSeedList[topoSeedBegin + seedNum];
+            return pcrhfracind[seedFracOffsets[seedIdx] + rhNum];
+        };
+
+        auto getRhFrac = [&] (int seedNum, int rhNum) {
+            int seedIdx = topoSeedList[topoSeedBegin + seedNum];
+            return pcrhfrac[seedFracOffsets[seedIdx] + rhNum];
+        };
+
+        printf("\n\nTopo cluster %d has %d seeds and %d other rechits\n", topoId, nSeeds, nRHTopo - nSeeds);
+        for (int s = 0; s < nSeeds; s++) {
+            int i = getSeedRhIdx(s);
+            printf("  PF cluster with seed %d\n", i);
+            for (int r = 0; r < nRHNotSeed; r++) {
+                int fracidx = getRhFracIdx(s, r);
+                float frac = getRhFrac(s, r);
+                
+                printf("\trechit %d%s\tfracidx = %d\tfrac = %f\n", r, (r == 0 ? "(seed)" : "\t"), fracidx, frac);
+                
+//                if (r == 0)
+//                    printf("\trechit %d(seed)\tfracidx = %d\tfrac = %f\n", r, fracidx, frac);
+//                else
+//                    printf("\trechit %d\t\tfracidx = %d\tfrac = %f\n", r, fracidx, frac);
+
+            }
+        }
+    }
+}
+
+__global__ void fastCluster(size_t nRH,
+                            const float* __restrict__ pfrh_x,
+                            const float* __restrict__ pfrh_y,
+                            const float* __restrict__ pfrh_z,
+                            const float* __restrict__ geomAxis_x,
+                            const float* __restrict__ geomAxis_y,
+                            const float* __restrict__ geomAxis_z,
+                            const float* __restrict__ pfrh_energy,
+                            int* pfrh_topoId,
+                            int* pfrh_isSeed,
+                            const int* __restrict__ pfrh_layer,
+                            const int* __restrict__ neigh8_Ind,
+                            float* pcrhfrac,
+                            int* pcrhfracind,
+                            float* fracSum,
+                            int* rhCount,
+                            int* topoSeedCount,
+                            int* topoRHCount,
+                            int* seedFracOffsets,
+                            int* topoSeedOffsets,
+                            int* topoSeedList,
+                            float4* clusterPos,
+                            float4* prevClusterPos,
+                            float4* linearClusterPos,
+                            float4* convClusterPos,
+                            float* clusterEnergy,
+                            float* clusterT0,
+                            int* pfcIter
+                            ) {
+  int topoId = blockIdx.x;
+  
+  if (topoId > -1 && topoId < nRH && topoRHCount[topoId] > 1 && topoSeedCount[topoId] > 0 && topoRHCount[topoId] != topoSeedCount[topoId]) {
+    //printf("Now on topoId %d\tthreadIdx.x = %d\n", topoId, threadIdx.x);
+    __shared__ int nSeeds, nRHTopo, nRHNotSeed, topoSeedBegin, gridStride, iter;
+    __shared__ float tol, diff, diff2;
+    __shared__ bool notDone, debug;
+    if (threadIdx.x == 0) {
+        nSeeds = topoSeedCount[topoId];
+        nRHTopo = topoRHCount[topoId];
+        nRHNotSeed = nRHTopo - nSeeds + 1;  // 1 + (# rechits per topoId that are NOT seeds)
+        topoSeedBegin = topoSeedOffsets[topoId];
+        tol = stoppingTolerance * powf(fmaxf(1.0, nSeeds - 1.0), 2.0);     // stopping tolerance * tolerance scaling
+        gridStride = blockDim.x * gridDim.x;
+        iter = 0;
+        notDone = true;
+        debug = false;
+        //debug = (topoId == 206 || topoId == 201 || topoId == 213 || topoId == 205 || topoId == 207 || topoId == 212 || topoId == 211 || topoId == 217 || topoId == 214) ? true : false;
+    }
+    __syncthreads();
+
+    auto getSeedRhIdx = [&] (int seedNum) {
+        if (seedNum > topoSeedCount[topoId]) {
+            printf("PROBLEM with seedNum = %d > nSeeds = %d", seedNum, nSeeds);
+            return -1;
+        }
+        return topoSeedList[topoSeedBegin + seedNum];
+    };
+
+    auto getRhFracIdx = [&] (int seedNum, int rhNum) {
+        int seedIdx = topoSeedList[topoSeedBegin + seedNum];
+        return pcrhfracind[seedFracOffsets[seedIdx] + rhNum];
+    };
+
+    auto getRhFrac = [&] (int seedNum, int rhNum) {
+        int seedIdx = topoSeedList[topoSeedBegin + seedNum];
+        return pcrhfrac[seedFracOffsets[seedIdx] + rhNum];
+    };
+
+    if (debug) {
+        if (threadIdx.x == 0) {
+            printf("\n===========================================================================================\n");
+            printf("Processing topo cluster %d with nSeeds = %d nRHTopo = %d and seeds (", topoId, nSeeds, nRHTopo);
+            for (int s = 0; s < nSeeds; s++) {
+                if (s != 0) printf(", ");
+                printf("%d", getSeedRhIdx(s));
+            }
+            if (nRHTopo == nSeeds) {
+                printf(")\n\n");
+            }
+            else {
+                printf(") and other rechits (");
+                for (int r = 1; r < nRHNotSeed; r++) {
+                    if (r != 1) printf(", ");
+                    printf("%d", getRhFracIdx(0, r));
+                }
+                printf(")\n\n");
+            }
+        }
+        __syncthreads();
+    }
+
+    
+    auto computeDepthPos = [&] (float4& pos4, float4& linear_pos, float _frac, int rhInd, float _clusterT0, float maxDepthFront, float totalClusterEnergy, float logETotInv, bool isDebug) {
+        float4 rechitPos = make_float4(pfrh_x[rhInd], pfrh_y[rhInd], pfrh_z[rhInd], 1.0);
+        float4 rechitAxis = make_float4(geomAxis_x[rhInd], geomAxis_y[rhInd], geomAxis_z[rhInd], 1.0);
+        float weight = 0.0; 
+
+        const auto rh_energy = pfrh_energy[rhInd] * _frac;
+        if (rh_energy > 0.0)
+            weight = fmaxf(0.0, conv_W0 + logf(rh_energy) + logETotInv);
+        const float depth = maxDepthFront - mag(rechitPos);
+        
+        if (isDebug)
+            printf("\t\t\trechit %d: w=%f\tfrac=%f\tdepth=%f\trh_energy=%f\trhPos=(%f, %f, %f)\tdeltaPos=(%f, %f, %f)\n", rhInd, weight, _frac, depth, rh_energy, rechitPos.x, rechitPos.y, rechitPos.z, weight * (rechitPos.x + depth * geomAxis_x[rhInd]), weight * (rechitPos.y + depth * geomAxis_y[rhInd]), weight * (rechitPos.z + depth * geomAxis_z[rhInd]));
+
+        atomicAdd(&pos4.x, weight * (rechitPos.x + depth * geomAxis_x[rhInd]));
+        atomicAdd(&pos4.y, weight * (rechitPos.y + depth * geomAxis_y[rhInd]));
+        atomicAdd(&pos4.z, weight * (rechitPos.z + depth * geomAxis_z[rhInd]));
+        atomicAdd(&pos4.w, weight);     //  position_norm
+
+        if (pos4.w > 0) return; // No need to compute position with linear weights if position_norm > 0
+        // Compute linear weights
+        float lin_weight = 0.0;
+        if (rh_energy > 0.0)
+            lin_weight = rh_energy / totalClusterEnergy;
+
+        atomicAdd(&linear_pos.x, lin_weight * rechitPos.x);
+        atomicAdd(&linear_pos.y, lin_weight * rechitPos.y);
+        atomicAdd(&linear_pos.z, lin_weight * rechitPos.z);
+        atomicAdd(&linear_pos.w, lin_weight);
+    };
+
+    auto computeGenericPos = [&] (float4& pos4, float _frac, int rhInd, bool isDebug) {
+        float4 rechitPos = make_float4(pfrh_x[rhInd], pfrh_y[rhInd], pfrh_z[rhInd], 1.0);
+        float threshold = logWeightDenominatorInv;
+
+        const auto rh_energy = pfrh_energy[rhInd] * _frac;
+        const auto norm =
+            (_frac < minFractionInCalc ? 0.0f : max(0.0f, logf(rh_energy * threshold)));
+        if (isDebug)
+            printf("\t\t\trechit %d: norm = %f\tfrac = %f\trh_energy = %f\tpos = (%f, %f, %f)\n", rhInd, norm, _frac, rh_energy, rechitPos.x, rechitPos.y, rechitPos.z);
+        
+        atomicAdd(&pos4.x, rechitPos.x * norm);
+        atomicAdd(&pos4.y, rechitPos.y * norm);
+        atomicAdd(&pos4.z, rechitPos.z * norm);
+        atomicAdd(&pos4.w, norm);     //  position_norm
+    };
+    
+    // Set initial cluster position (energy) to seed rechit position (energy)
+    for (int s = threadIdx.x; s < nSeeds; s += gridStride) {
+        int i = getSeedRhIdx(s);
+        clusterPos[i] = make_float4(pfrh_x[i], pfrh_y[i], pfrh_z[i], 1.0);
+        prevClusterPos[i] = make_float4(0., 0., 0., 0.); 
+        linearClusterPos[i] = make_float4(0., 0., 0., 0.); 
+        convClusterPos[i] = make_float4(0., 0., 0., 0.);
+        clusterEnergy[i] = pfrh_energy[i];
+                
+        clusterT0[i] = 0.;
+        if (pfrh_layer[i] == PFLayer::ECAL_BARREL) clusterT0[i] = conv_T0_EB;
+        else if (pfrh_layer[i] == PFLayer::ECAL_ENDCAP) clusterT0[i] = conv_T0_EE;
+
+        float seedEta = etaFromCartesian(pfrh_x[i], pfrh_y[i], pfrh_z[i]);
+        float absSeedEta = fabsf(seedEta);
+        if (absSeedEta > preshowerStartEta && absSeedEta < preshowerEndEta) {
+            if (seedEta > 0) {
+                clusterT0[i] = conv_T0_ES;
+            }
+            else if (seedEta < 0) {
+                clusterT0[i] = conv_T0_ES;
+            }
+            else {
+                printf("SOMETHING WRONG WITH THIS CLUSTER ETA!\n");
+            }
+        }
+
+        float logETot_inv = -logf(pfrh_energy[i]);
+        float maxDepth = conv_X0 * (clusterT0[i] - logETot_inv);
+        float maxToFront = mag(pfrh_x[i], pfrh_y[i], pfrh_z[i]);
+        float maxDepthPlusFront = maxDepth + maxToFront;
+        computeDepthPos(prevClusterPos[i], linearClusterPos[i], 1.0, i, clusterT0[i], maxDepthPlusFront, pfrh_energy[i], logETot_inv, debug);
+        prevClusterPos[i].x /= prevClusterPos[i].w;
+        prevClusterPos[i].y /= prevClusterPos[i].w;
+        prevClusterPos[i].z /= prevClusterPos[i].w;
+    }
+    __syncthreads();
+
+    while (notDone) {
+        if (debug && threadIdx.x == 0) {
+            printf("\n--- Now on iter %d for topoId %d ---\n", iter, topoId);
+        }
+
+        // Reset fracSum, rhCount, pcrhfrac
+        for (int r = threadIdx.x + 1; r < nRHNotSeed; r += gridStride) {
+            int j = getRhFracIdx(0, r);
+            fracSum[j] = 0.;
+            rhCount[j] = 1;
+
+            for (int s = 0; s < nSeeds; s++) {
+                int i = getSeedRhIdx(s);
+                pcrhfrac[seedFracOffsets[i] + r] = -1.;
+            }
+        }
+        __syncthreads();
+
+        // First calculate rechit fraction sum
+        for (int r = threadIdx.x + 1; r < nRHNotSeed; r += gridStride) {    // One thread for each (non-seed) rechit 
+            for (int s = 0; s < nSeeds; s++) {      // PF clusters
+                int i = getSeedRhIdx(s);
+                int j = getRhFracIdx(s, r);
+
+                if (debug && threadIdx.x == 0) {
+                    printf("\tCluster %d (seed %d) using prev convergence pos = (%f, %f, %f) and cluster position = (%f, %f, %f)\n", s, i, prevClusterPos[i].x, prevClusterPos[i].y, prevClusterPos[i].z, clusterPos[i].x, clusterPos[i].y, clusterPos[i].z);
+                }
+
+                float dist2 =
+                       (clusterPos[i].x - pfrh_x[j])*(clusterPos[i].x - pfrh_x[j])
+                      +(clusterPos[i].y - pfrh_y[j])*(clusterPos[i].y - pfrh_y[j])
+                      +(clusterPos[i].z - pfrh_z[j])*(clusterPos[i].z - pfrh_z[j]);
+                float d2 = dist2 / showerSigma2;
+                float fraction = -1.;
+
+                if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = clusterEnergy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+                else if (pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = clusterEnergy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
+                if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
+
+                if( pfrh_isSeed[j]!=1) {
+                    atomicAdd(&fracSum[j],fraction);
+                }
+            }
+        }
+        __syncthreads();
+
+        // Calculate rechit fractions 
+        for (int r = threadIdx.x + 1; r < nRHNotSeed; r += gridStride) {    // One thread for each (non-seed) rechit 
+            for (int s = 0; s < nSeeds; s++) {      // PF clusters
+                int i = getSeedRhIdx(s);
+                int j = getRhFracIdx(s, r);
+
+                if( pfrh_isSeed[j]!=1 ){
+                    float dist2 =
+                       (clusterPos[i].x - pfrh_x[j])*(clusterPos[i].x - pfrh_x[j])
+                      +(clusterPos[i].y - pfrh_y[j])*(clusterPos[i].y - pfrh_y[j])
+                      +(clusterPos[i].z - pfrh_z[j])*(clusterPos[i].z - pfrh_z[j]);
+
+                    float d2 = dist2 / showerSigma2;
+                    float fraction = -1.;
+
+                    if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = clusterEnergy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+                    else if (pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = clusterEnergy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
+                    if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
+
+                    if (fracSum[j] > minFracTot) {
+                        float fracpct = fraction / fracSum[j];
+                        if(fracpct > 0.9999 || (d2 < 100. && fracpct > minFracToKeep)) {
+                            pcrhfrac[seedFracOffsets[i]+r] = fracpct;
+                        }
+                        else {
+                            if (debug) printf("\trechit %d fracSum = %f\tfracpct = %f\td2 = %f\tminFracToKeep = %f\n", j, fracSum[j], fracpct, d2, minFracToKeep); 
+                            pcrhfrac[seedFracOffsets[i]+r] = -1;
+                        }
+                    }
+                    else {
+                        if (debug) printf("\trechit %d fracSum = %f LESS than minFracTot = %f\n", j, fracSum[j], minFracTot); 
+                        pcrhfrac[seedFracOffsets[i]+r] = -1;
+                    }
+                }
+            }
+        }
+        __syncthreads();
+        
+        if (debug && threadIdx.x == 0)
+            printf("Computing cluster position for topoId %d\n", topoId);
+       
+        // Reset cluster energy and positions
+        for (int s = threadIdx.x; s < nSeeds; s += gridStride) {
+            int i = getSeedRhIdx(s);
+            clusterPos[i] = make_float4(0.0, 0.0, 0.0, 0.0);
+            linearClusterPos[i] = make_float4(0., 0., 0., 0.); 
+            convClusterPos[i] = make_float4(0., 0., 0., 0.);
+            clusterEnergy[i] = 0;
+        }
+        __syncthreads();
+
+        // Recalculate cluster position and energy
+        for (int r = threadIdx.x; r < nRHNotSeed; r += gridStride) {    // One thread for each (non-seed) rechit 
+            for (int s = 0; s < nSeeds; s++) {      // PF clusters
+                int i = getSeedRhIdx(s);    // Seed index
+
+                // Calculate cluster energy by summing rechit fractional energies
+                int j = getRhFracIdx(s,r);
+                float frac = getRhFrac(s,r);
+
+                if (frac > -0.5) {
+                    //if (debug)
+                        //printf("\t\tRechit %d (position %d) in this PF cluster with frac = %f\n", j, _n, frac);
+                    atomicAdd(&clusterEnergy[i], frac * pfrh_energy[j]);
+
+                    bool updateClusterPos = false;
+                    if (nSeeds == 1) {
+                        if (debug && threadIdx.x == 0)
+                            printf("\t\tThis topo cluster has a single seed.\n");
+                        //computeClusterPos(clusterPos[i], frac, j, debug);
+                        updateClusterPos = true;
+                    }
+                    else {
+                        if (j == i) {
+                            // This is the seed
+                            updateClusterPos = true;
+                        }
+                        else {
+                            // Check if this is one of the neighboring rechits
+                            for(int k=0; k<nNeigh; k++){
+                                if(neigh8_Ind[nNeigh*i+k]<0) continue;
+                                if(neigh8_Ind[nNeigh*i+k] == j) {
+                                    // Found it
+                                    if (debug) printf("\t\tRechit %d is one of the 8 neighbors of seed %d\n", j, i);
+                                    updateClusterPos = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (updateClusterPos) computeGenericPos(clusterPos[i], frac, j, debug);
+                }
+            }
+        }
+        __syncthreads();
+
+        // ECAL 2D depth cluster position calculation
+        for (int r = threadIdx.x; r < nRHNotSeed; r += gridStride) {    // One thread for each (non-seed) rechit 
+            for (int s = 0; s < nSeeds; s++) {      // PF clusters
+                int i = getSeedRhIdx(s);    // Seed index
+                int j = getRhFracIdx(s,r);
+                float frac = getRhFrac(s,r);
+
+
+                if (frac > -0.5) {
+                    float logETot_inv = -logf(clusterEnergy[i]);
+                    float maxDepth = conv_X0 * (clusterT0[i] - logETot_inv);
+                    float maxToFront = mag(pfrh_x[i], pfrh_y[i], pfrh_z[i]);
+                    float maxDepthPlusFront = maxDepth + maxToFront;
+                    computeDepthPos(convClusterPos[i], linearClusterPos[i], frac, j, clusterT0[i], maxDepthPlusFront, clusterEnergy[i], logETot_inv, debug);
+                }
+                //else if (debug)
+                //    printf("Can't find rechit fraction for cluster %d (seed %d) rechit %d!\n", s, i, j);
+
+            }
+        }
+        __syncthreads();
+        
+        for (int s = threadIdx.x; s < nSeeds; s += gridStride) {
+            int i = getSeedRhIdx(s);    // Seed index
+            // Generic position calculation
+            if (clusterPos[i].w >= minAllowedNormalization) {
+                // Divide by position norm
+                clusterPos[i].x /= clusterPos[i].w;
+                clusterPos[i].y /= clusterPos[i].w;
+                clusterPos[i].z /= clusterPos[i].w;
+                if (debug)
+                    printf("\tCluster %d (seed %d) energy = %f\tgeneric pos = (%f, %f, %f)\n", s, i, clusterEnergy[i], clusterPos[i].x, clusterPos[i].y, clusterPos[i].z);
+            }
+            else {
+                if (debug)
+                    printf("\tGeneric pos calc: Cluster %d (seed %d) position norm (%f) less than minimum (%f)\n", s, i, clusterPos[i].w, minAllowedNormalization);
+                clusterPos[i].x = 0.0;
+                clusterPos[i].y = 0.0;
+                clusterPos[i].z = 0.0;
+            }
+
+            // ECAL depth corrected position
+            if (convClusterPos[i].w >= conv_minAllowedNormalization && convClusterPos[i].w >= 0.0)
+            {
+                // Divide by position norm
+                convClusterPos[i].x /= convClusterPos[i].w;
+                convClusterPos[i].y /= convClusterPos[i].w;
+                convClusterPos[i].z /= convClusterPos[i].w;
+
+                if (debug)
+                    printf("\tCluster %d (seed %d) energy = %f\t2D depth cor pos = (%f, %f, %f)\n", s, i, clusterEnergy[i], convClusterPos[i].x, convClusterPos[i].y, convClusterPos[i].z);
+            }
+            else if (fabsf(convClusterPos[i].w) < 1e-5 && linearClusterPos[i].w >= conv_minAllowedNormalization) {
+                convClusterPos[i].x = linearClusterPos[i].x / linearClusterPos[i].w;
+                convClusterPos[i].y = linearClusterPos[i].y / linearClusterPos[i].w;
+                convClusterPos[i].z = linearClusterPos[i].z / linearClusterPos[i].w;
+                if (debug) printf("\tCluster %d (seed %d) falling back to linear weights!\tenergy = %f\tpos = (%f, %f, %f)\n", s, i, clusterEnergy[i], convClusterPos[i].x, convClusterPos[i].y, convClusterPos[i].z);
+            }
+            else {
+                if (debug)
+                    printf("\tCluster %d (seed %d) position norm (%f) less than minimum (%f)\n", s, i, linearClusterPos[i].w, conv_minAllowedNormalization);
+                convClusterPos[i].x = 0.0;
+                convClusterPos[i].y = 0.0;
+                convClusterPos[i].z = 0.0;
+                //printf("PFCluster for seed rechit %d has position norm less than allowed minimum!\n", i);
+
+            }
+        }
+        if (threadIdx.x == 0) diff2 = -1.;
+        __syncthreads();
+
+
+        for (int s = threadIdx.x; s < nSeeds; s += gridStride) {
+            int i = getSeedRhIdx(s);
+            float delta2 = dR2(prevClusterPos[i], convClusterPos[i]);
+            if (debug) printf("\tCluster %d (seed %d) has delta2 = %f\n", s, i, delta2);
+            if (delta2 > diff2) {
+                diff2 = delta2;
+                if (debug) printf("\t\tNew diff2 = %f\n", diff2);
+            }
+
+            // Set previous cluster position to convergence pos
+            prevClusterPos[i] = convClusterPos[i];
+        }
+        __syncthreads();
+        
+        if (threadIdx.x == 0) {
+            diff = sqrtf(diff2);
+            iter++;
+            notDone = (diff > tol) && (iter < maxIterations);
+            if (debug) {
+                if (diff > tol)
+                    printf("\tTopoId %d has diff = %f greater than tolerance %f (continuing)\n", topoId, diff, tol);
+                else
+                    if (debug) printf("\tTopoId %d has diff = %f LESS than tolerance %f (terminating!)\n", topoId, diff, tol);
+            }
+        }
+        __syncthreads();
+    } // end while iter loop
+    if (threadIdx.x == 0) pfcIter[topoId] = iter;
   }
+  else if (threadIdx.x == 0 && (topoRHCount[topoId] == 1 || (topoRHCount[topoId] > 1 && topoRHCount[topoId] == topoSeedCount[topoId]))) {
+    // Single rh cluster or all rechits in this topo cluster are seeds. No iterations needed
+    pfcIter[topoId] = 0;
+  }
+
+}
 
 
 __global__ void fastCluster_serialize(size_t nRH,
@@ -617,7 +1113,7 @@ __global__ void fastCluster_serialize(size_t nRH,
         //float tolScaling2 = std::pow(std::max(1.0, nSeeds - 1.0), 4.0);     // Tolerance scaling squared
         float tolScaling = powf(fmaxf(1.0, nSeeds - 1.0), 2.0);     // Tolerance scaling
 
-        float4 prevClusterPos[75], linearClusterPos[75], clusterPos[75], convergenceClusterPos[75];  //  W component is position norm
+        float4 prevClusterPos[75], linearClusterPos[75], clusterPos[75], convClusterPos[75];  //  W component is position norm
         float clusterEnergy[75];
         //float prevClusterEnergy[75];
         
@@ -653,12 +1149,12 @@ __global__ void fastCluster_serialize(size_t nRH,
 
         auto computeFromArrays = [&] (float4& pos4, float _frac, int rhInd, bool isDebug) {
             float4 rechitPos = make_float4(pfrh_x[rhInd], pfrh_y[rhInd], pfrh_z[rhInd], 1.0);
-            float threshold = 1. / logWeightDenominator;
+            float threshold = logWeightDenominatorInv;
 //            float threshold = 0.0;
 //            if(pfrh_layer[rhInd] == PFLayer::ECAL_BARREL) {
-//                threshold = 1. / recHitEnergyNormEB; // This number needs to be inverted
+//                threshold = 1. / recHitEnergyNormInvEB; // This number needs to be inverted
 //            }
-//            else if (pfrh_layer[rhInd] == PFLayer::ECAL_ENDCAP) { threshold = 1. / recHitEnergyNormEE; }
+//            else if (pfrh_layer[rhInd] == PFLayer::ECAL_ENDCAP) { threshold = 1. / recHitEnergyNormInvEE; }
 
             const auto rh_energy = pfrh_energy[rhInd] * _frac;
             const auto norm =
@@ -687,9 +1183,9 @@ __global__ void fastCluster_serialize(size_t nRH,
             if (_frac < 0)
                 printf("Warning: negative rechitfrac found for seed %d rechit %d!\n", seedInd, rhInd);
             if(pfrh_layer[rhInd] == 1) {
-                threshold = 1. / recHitEnergyNormEB; // This number needs to be inverted
+                threshold = 1. / recHitEnergyNormInvEB; // This number needs to be inverted
             }
-            else if (pfrh_layer[rhInd] == 3) { threshold = 1. / recHitEnergyNormEE; }
+            else if (pfrh_layer[rhInd] == 3) { threshold = 1. / recHitEnergyNormInvEE; }
 
             const auto rh_energy = pfrh_energy[rhInd] * _frac;
             const auto norm =
@@ -753,7 +1249,7 @@ __global__ void fastCluster_serialize(size_t nRH,
                     //prevClusterEnergy[s] = 0.0;
                 }
                 else {
-                    prevClusterPos[s] = convergenceClusterPos[s];
+                    prevClusterPos[s] = convClusterPos[s];
                     //prevClusterEnergy[s] = clusterEnergy[s];
 
                     // Reset cluster indices and fractions
@@ -776,8 +1272,8 @@ __global__ void fastCluster_serialize(size_t nRH,
                         float d2 = dist2 / showerSigma2;
                         float fraction = -1.;
 
-                        if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = clusterEnergy[s] / recHitEnergyNormEB * expf(-0.5 * d2); }
-                        else if (pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = clusterEnergy[s] / recHitEnergyNormEE * expf(-0.5 * d2); }
+                        if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = clusterEnergy[s] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+                        else if (pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = clusterEnergy[s] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
                         if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
                         if( pfrh_isSeed[j]!=1) {
@@ -804,8 +1300,8 @@ __global__ void fastCluster_serialize(size_t nRH,
                             float d2 = dist2 / showerSigma2;
                             float fraction = -1.;
 
-                            if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = clusterEnergy[s] / recHitEnergyNormEB * expf(-0.5 * d2); }
-                            else if (pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = clusterEnergy[s] / recHitEnergyNormEE * expf(-0.5 * d2); }
+                            if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = clusterEnergy[s] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+                            else if (pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = clusterEnergy[s] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
                             if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
                             if (fracSum[j] > minFracTot) {
@@ -840,7 +1336,7 @@ __global__ void fastCluster_serialize(size_t nRH,
                 // Zero out cluster position and energy
                 clusterPos[s] = make_float4(0.0, 0.0, 0.0, 0.0);
                 linearClusterPos[s] = make_float4(0.0, 0.0, 0.0, 0.0);
-                convergenceClusterPos[s] = make_float4(0.0, 0.0, 0.0, 0.0);
+                convClusterPos[s] = make_float4(0.0, 0.0, 0.0, 0.0);
                 clusterEnergy[s] = 0;
                 float clusterT0 = 0.0, maxDepth = 0.0, maxToFront = 0.0, maxDepthPlusFront = 0.0, logETot_inv = 0.0;
                 if (pfrh_layer[i] == PFLayer::ECAL_BARREL) clusterT0 = conv_T0_EB;
@@ -938,7 +1434,7 @@ __global__ void fastCluster_serialize(size_t nRH,
                         }
                     }
                     if (frac > -0.5) {
-                        computeDepthPosFromArrays(convergenceClusterPos[s], linearClusterPos[s], frac, j, clusterT0, maxDepthPlusFront, clusterEnergy[s], logETot_inv, debug);
+                        computeDepthPosFromArrays(convClusterPos[s], linearClusterPos[s], frac, j, clusterT0, maxDepthPlusFront, clusterEnergy[s], logETot_inv, debug);
                     }
                     //else if (debug)
                     //    printf("Can't find rechit fraction for cluster %d (seed %d) rechit %d!\n", s, i, j);
@@ -963,28 +1459,28 @@ __global__ void fastCluster_serialize(size_t nRH,
                 }
 
                 // ECAL depth corrected position
-                if (convergenceClusterPos[s].w >= conv_minAllowedNormalization && convergenceClusterPos[s].w >= 0.0)
+                if (convClusterPos[s].w >= conv_minAllowedNormalization && convClusterPos[s].w >= 0.0)
                 {
                     // Divide by position norm
-                    convergenceClusterPos[s].x /= convergenceClusterPos[s].w;
-                    convergenceClusterPos[s].y /= convergenceClusterPos[s].w;
-                    convergenceClusterPos[s].z /= convergenceClusterPos[s].w;
+                    convClusterPos[s].x /= convClusterPos[s].w;
+                    convClusterPos[s].y /= convClusterPos[s].w;
+                    convClusterPos[s].z /= convClusterPos[s].w;
 
                     if (debug)
-                        printf("\tCluster %d (seed %d) energy = %f\t2D depth cor pos = (%f, %f, %f)\n", s, i, clusterEnergy[s], convergenceClusterPos[s].x, convergenceClusterPos[s].y, convergenceClusterPos[s].z);
+                        printf("\tCluster %d (seed %d) energy = %f\t2D depth cor pos = (%f, %f, %f)\n", s, i, clusterEnergy[s], convClusterPos[s].x, convClusterPos[s].y, convClusterPos[s].z);
                 }
-                else if (fabsf(convergenceClusterPos[s].w) < 1e-5 && linearClusterPos[s].w >= conv_minAllowedNormalization) {
-                    convergenceClusterPos[s].x = linearClusterPos[s].x / linearClusterPos[s].w;
-                    convergenceClusterPos[s].y = linearClusterPos[s].y / linearClusterPos[s].w;
-                    convergenceClusterPos[s].z = linearClusterPos[s].z / linearClusterPos[s].w;
-                    if (debug) printf("\tCluster %d (seed %d) falling back to linear weights!\tenergy = %f\tpos = (%f, %f, %f)\n", s, i, clusterEnergy[s], convergenceClusterPos[s].x, convergenceClusterPos[s].y, convergenceClusterPos[s].z);
+                else if (fabsf(convClusterPos[s].w) < 1e-5 && linearClusterPos[s].w >= conv_minAllowedNormalization) {
+                    convClusterPos[s].x = linearClusterPos[s].x / linearClusterPos[s].w;
+                    convClusterPos[s].y = linearClusterPos[s].y / linearClusterPos[s].w;
+                    convClusterPos[s].z = linearClusterPos[s].z / linearClusterPos[s].w;
+                    if (debug) printf("\tCluster %d (seed %d) falling back to linear weights!\tenergy = %f\tpos = (%f, %f, %f)\n", s, i, clusterEnergy[s], convClusterPos[s].x, convClusterPos[s].y, convClusterPos[s].z);
                 }
                 else {
                     if (debug)
                         printf("\tCluster %d (seed %d) position norm (%f) less than minimum (%f)\n", s, i, linearClusterPos[s].w, conv_minAllowedNormalization);
-                    convergenceClusterPos[s].x = 0.0;
-                    convergenceClusterPos[s].y = 0.0;
-                    convergenceClusterPos[s].z = 0.0;
+                    convClusterPos[s].x = 0.0;
+                    convClusterPos[s].y = 0.0;
+                    convClusterPos[s].z = 0.0;
                     //printf("PFCluster for seed rechit %d has position norm less than allowed minimum!\n", i);
 
                 }
@@ -993,7 +1489,7 @@ __global__ void fastCluster_serialize(size_t nRH,
             float diff2 = 0.0;
             for (int s = 0; s < nSeeds; s++) {
                 //float delta2 = dR2(prevClusterPos[s], clusterPos[s]);
-                float delta2 = dR2(prevClusterPos[s], convergenceClusterPos[s]);
+                float delta2 = dR2(prevClusterPos[s], convClusterPos[s]);
                 if (debug) printf("\tCluster %d (seed %d) has delta2 = %f\n", s, seeds[s], delta2);
                 if (delta2 > diff2) {
                     diff2 = delta2;
@@ -1072,8 +1568,8 @@ __global__ void fastCluster_original(size_t nRH,
                         float d2 = dist2 / showerSigma2;
                         float fraction = -1.;
 
-                        if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-                        else if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+                        if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+                        else if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
                         if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
                         if( pfrh_isSeed[j]!=1) {
@@ -1101,8 +1597,8 @@ __global__ void fastCluster_original(size_t nRH,
                             float d2 = dist2 / showerSigma2;
                             float fraction = -1.;
 
-                            if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-                            if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+                            if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+                            if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
                             if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
 
                             if (fracSum[j] > minFracTot) {
@@ -1154,8 +1650,8 @@ __global__ void fastCluster_step1( size_t size,
       float d2 = dist2 / showerSigma2; 
       float fraction = -1.;
 
-      if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-      else if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+      if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+      else if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
       if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
       
       if( pfrh_isSeed[j]!=1)
@@ -1200,8 +1696,8 @@ __global__ void fastCluster_step2( size_t size,
         float d2 = dist2 / showerSigma2; 
         float fraction = -1.;
 
-        if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-        if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+        if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+        if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
         if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
         
         if (fracSum[j] > minFracTot) {
@@ -1261,8 +1757,8 @@ __global__ void fastCluster_step1_serialize( size_t size,
               float d2 = dist2 / showerSigma2; 
               float fraction = -1.;
 
-              if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-              if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+              if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+              if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
               if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
               
               if( pfrh_isSeed[j]!=1 && d2<100)
@@ -1312,8 +1808,8 @@ __global__ void fastCluster_step2_serialize( size_t size,
             float d2 = dist2 / showerSigma2; 
             float fraction = -1.;
 
-            if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] / recHitEnergyNormEB * expf(-0.5 * d2); }
-            if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] / recHitEnergyNormEE * expf(-0.5 * d2); }
+            if(pfrh_layer[j] == PFLayer::ECAL_BARREL) { fraction = pfrh_energy[i] * recHitEnergyNormInvEB * expf(-0.5 * d2); }
+            if(pfrh_layer[j] == PFLayer::ECAL_ENDCAP) { fraction = pfrh_energy[i] * recHitEnergyNormInvEE * expf(-0.5 * d2); }
             if(fraction==-1.) printf("FRACTION is NEGATIVE!!!");
             if(d2 < 100. )
               { 
@@ -1356,6 +1852,102 @@ __global__ void topoClusterContraction(size_t size, int* pfrh_parent) {
     } while (notDone);
 }
 
+
+// Contraction in a single block
+__global__ void topoClusterContraction(size_t size,
+                                       int* pfrh_parent,
+                                       int* pfrh_isSeed,
+                                       int* rhCount,
+                                       int* topoSeedCount,
+                                       int* topoRHCount,
+                                       int* seedFracOffsets,
+                                       int* topoSeedOffsets,
+                                       int* topoSeedList,
+                                       int* pcrhfracind,
+                                       float* pcrhfrac,
+                                       int* pcrhFracSize
+                                       ) {
+    __shared__ int notDone, totalSeedOffset, totalSeedFracOffset;
+    if (threadIdx.x == 0) {
+        notDone = 0;
+        totalSeedOffset = 0;
+        totalSeedFracOffset = 0;
+        *pcrhFracSize = 0;
+    }
+    __syncthreads();
+
+    do {
+        volatile bool threadNotDone = false;
+        for (int i = threadIdx.x; i < size; i += blockDim.x) {
+            int parent = pfrh_parent[i]; 
+            if (parent >= 0 && parent != pfrh_parent[parent]) {
+                threadNotDone = true;
+                pfrh_parent[i] = pfrh_parent[parent];
+            }
+        }
+        if (threadIdx.x == 0) notDone = 0;
+        __syncthreads();
+
+        atomicAdd(&notDone, (int)threadNotDone);
+        __syncthreads();
+
+    } while (notDone);
+
+    // Now determine the number of seeds and rechits in each topo cluster
+    for (int rhIdx = threadIdx.x; rhIdx < size; rhIdx += blockDim.x) {
+        int topoId = pfrh_parent[rhIdx];
+        if (topoId > -1) {
+            // Valid topo cluster
+            atomicAdd(&topoRHCount[topoId], 1);
+            if (pfrh_isSeed[rhIdx]) {
+                atomicAdd(&topoSeedCount[topoId], 1);
+            }
+        }
+    }
+    __syncthreads();
+
+    // Determine offsets for topo ID seed array
+    for (int topoId = threadIdx.x; topoId < size; topoId += blockDim.x) {
+        if (topoSeedCount[topoId] > 0) {
+            // This is a valid topo ID
+            int offset = atomicAdd(&totalSeedOffset, topoSeedCount[topoId]);
+            topoSeedOffsets[topoId] = offset;
+        }
+    }
+    __syncthreads();
+
+
+    // Fill arrays of seed indicies per topo ID 
+    for (int rhIdx = threadIdx.x; rhIdx < size; rhIdx += blockDim.x) {
+        int topoId = pfrh_parent[rhIdx];
+        if (topoId > -1 && pfrh_isSeed[rhIdx]) {
+            // Valid topo cluster
+            int k = atomicAdd(&rhCount[topoId], 1); 
+            topoSeedList[topoSeedOffsets[topoId]+k] = rhIdx;
+        }
+    }
+    __syncthreads();
+
+    // Determine seed offsets for rechit fraction array
+    for (int rhIdx = threadIdx.x; rhIdx < size; rhIdx += blockDim.x) {
+        rhCount[rhIdx] = 1; // Reset this counter array
+
+        int topoId = pfrh_parent[rhIdx]; 
+        if (pfrh_isSeed[rhIdx] && topoId > -1) {
+            // Allot the total number of rechits for this topo cluster for rh fractions
+            int offset = atomicAdd(&totalSeedFracOffset, topoRHCount[topoId]);
+
+            // Add offset for this PF cluster seed
+            seedFracOffsets[rhIdx] = offset;
+            pcrhfracind[offset] = rhIdx;
+            pcrhfrac[offset] = 1.;
+        }
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        *pcrhFracSize = totalSeedFracOffset;
+    }
+}
 
 __device__ __forceinline__ bool isLeftEdge(const int idx,
     const int nEdges,
@@ -1427,7 +2019,7 @@ __global__ void topoClusterLinking(int nRH,
     int* pfrh_edgeList,
     int* pfrh_edgeMask,
     bool* pfrh_passTopoThresh,
-    int* nIter) {
+    int* topoIter) {
 
     __shared__ bool notDone;
     __shared__ int iter, gridStride;
@@ -1435,7 +2027,7 @@ __global__ void topoClusterLinking(int nRH,
     int start = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (threadIdx.x == 0) {
-        *nIter = 0;
+        *topoIter = 0;
         iter = 0;
         gridStride = blockDim.x * gridDim.x; // For single block kernel this is the number of threads
     }
@@ -1535,10 +2127,52 @@ __global__ void topoClusterLinking(int nRH,
         __syncthreads();
 
     } while (notDone);
-    *nIter = iter;
+    *topoIter = iter;
 }
 
+__global__ void fillRhfIndex(size_t nRH,
+                             int* pfrh_parent,
+                             int* pfrh_isSeed,
+                             int* topoSeedCount,
+                             int* topoRHCount,
+                             int* seedFracOffsets,
+                             int* rhCount,
+                             int* pcrhfracind) {
 
+    int i = threadIdx.x+blockIdx.x*blockDim.x;  // i is the seed index
+    int j = threadIdx.y+blockIdx.y*blockDim.y;  // j is NOT a seed
+
+    if (i < nRH && j < nRH) {
+        //if (i == debugSeedIdx) printf("This is fillRhfIndex with i = %d and j = %d\n", i, j);
+        int topoId = pfrh_parent[i];
+        if (topoId == pfrh_parent[j] && topoId > -1 && pfrh_isSeed[i] && !pfrh_isSeed[j]) {
+            int k = atomicAdd(&rhCount[i], 1);  // Increment the number of rechit fractions for this seed
+            pcrhfracind[seedFracOffsets[i] + k] = j;    // Save this rechit index
+        }
+    }
+}
+
+__global__ void resetOldFracArrays(size_t nRH,
+                                   int* pcrhfracind,
+                                   float* pcrhfrac) {
+
+    int i = threadIdx.x+blockIdx.x*blockDim.x;
+    if (i < nRH) {
+        for (int j = 0; j < 75; j++) {
+            pcrhfracind[i*75 + j] = -1;
+            pcrhfrac[i*75 + j] = -1;
+        }
+    }
+}
+
+__global__ void printPFCIter(int nRH, int* pfcIter) {
+    printf("pfcIter = \n[");
+    for (int i = 0; i < nRH; i++) {
+        if (i != 0) printf(", ");
+        printf("%d", pfcIter[i]);
+    }
+    printf("]\n\n");
+}
 
 void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
                 int nEdges,
@@ -1562,8 +2196,21 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
                 float* pcrhfrac,
                 float* fracSum,
                 int* rhCount,
+                int* topoSeedCount,
+                int* topoRHCount,
+                int* seedFracOffsets,
+                int* topoSeedOffsets,
+                int* topoSeedList,
+                float4* pfc_pos4,
+                float4* pfc_prevPos4,
+                float4* pfc_linearPos4,
+                float4* pfc_convPos4,
+                float* pfc_energy,
+                float* pfc_clusterT0,
                 float (&timer)[8],
-                int* nIter) {
+                int* topoIter,
+                int* pfcIter,
+                int* pcrhFracSize) {
     if (nRH < 1) return;
 
 #ifdef DEBUG_GPU_ECAL
@@ -1575,7 +2222,7 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 #endif
     cudaProfilerStart();
     // Combined seeding & topo clustering thresholds
-    seedingTopoThreshKernel_ECAL<<<(nRH+63)/64, 128>>>(nRH, rhCount, fracSum, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, neigh8_Ind);
+    seedingTopoThreshKernel_ECAL<<<(nRH+63)/64, 128>>>(nRH, fracSum, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, neigh8_Ind, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfcIter);
 
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(stop);
@@ -1586,9 +2233,10 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 #endif
 
     //topoclustering 
-    //topoClusterLinking<<<1, 1024 >>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, nIter);
-    topoClusterLinking<<<1, 512>>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, nIter);
-    topoClusterContraction<<<1, 512>>>(nRH, pfrh_topoId);
+    //topoClusterLinking<<<1, 1024 >>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, topoIter);
+    topoClusterLinking<<<1, 512>>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, topoIter);
+    //topoClusterContraction<<<1, 512>>>(nRH, pfrh_topoId);
+    topoClusterContraction<<<1, 512>>>(nRH, pfrh_topoId, pfrh_isSeed, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pcrhfracind, pcrhfrac, pcrhFracSize);
 
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(stop);
@@ -1597,16 +2245,43 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
+    
+    dim3 grid((nRH+31)/32, (nRH+31)/32);
+    dim3 block(32, 32);
+    //printf("grid = (%d, %d, %d)\tblock = (%d, %d, %d)\n", grid.x, grid.y, grid.z, block.x, block.y, block.z);
+    //printf("About to call fillRhfIndex with nRH = %d\n", nRH);
+    
+//    resetOldFracArrays<<<32, 128>>>(nRH, pcrhfracind, pcrhfrac); 
+    fillRhfIndex<<<grid, block>>>(nRH, pfrh_topoId, pfrh_isSeed, topoSeedCount, topoRHCount, seedFracOffsets, rhCount, pcrhfracind);
+
+#ifdef DEBUG_GPU_ECAL
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&timer[2], start, stop);
+    cudaDeviceSynchronize();
+    cudaEventRecord(start);
+#endif
+    
+    fastCluster<<<nRH, 256>>>(nRH, pfrh_x,  pfrh_y,  pfrh_z,  geomAxis_x, geomAxis_y, geomAxis_z, pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, neigh8_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfc_pos4, pfc_prevPos4, pfc_linearPos4, pfc_convPos4, pfc_energy, pfc_clusterT0, pfcIter);
+   
+//    cudaDeviceSynchronize();
+//    printf("*** After fastCluster ***\n");
+//    printFracs<<<1,1>>>(nRH, pcrhfrac, pcrhfracind, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList);
+//
+//    cudaDeviceSynchronize();
+
+    //printf("About to run printPFCIter\n");
+    //printPFCIter<<<1,1>>>(nRH, pfcIter);
 
     //fastCluster_serialize<<<1, 1>>>(nRH, pfrh_x,  pfrh_y,  pfrh_z,  geomAxis_x, geomAxis_y, geomAxis_z, pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, neigh8_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount);
 
     //fastCluster_original<<<1, 1>>>(nRH, pfrh_x,  pfrh_y,  pfrh_z,  geomAxis_x, geomAxis_y, geomAxis_z, pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
 
+/*
+    dim3 grid2( (nRH+32-1)/32, (nRH+32-1)/32 );
+    dim3 block2( 32, 32);
 
-    dim3 grid( (nRH+32-1)/32, (nRH+32-1)/32 );
-    dim3 block( 32, 32);
-
-    fastCluster_step1<<<grid, block>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
+    fastCluster_step1<<<grid2, block2>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
 
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(stop);
@@ -1616,8 +2291,8 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventRecord(start);
 #endif
 
-    fastCluster_step2<<<grid, block>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
-
+    fastCluster_step2<<<grid2, block2>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pcrhfrac, pcrhfracind, fracSum, rhCount);
+*/
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
