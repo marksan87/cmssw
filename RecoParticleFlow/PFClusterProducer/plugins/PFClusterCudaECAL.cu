@@ -8,14 +8,12 @@
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "RecoParticleFlow/PFClusterProducer/plugins/PFClusterCudaECAL.h"
 #include <Eigen/Dense>
-#include <thrust/sort.h>
-#include <thrust/device_ptr.h>
 #include <cuda_profiler_api.h>
 
 using PFClustering::common::PFLayer;
 
 // Uncomment for debugging
-#define DEBUG_GPU_ECAL
+//#define DEBUG_GPU_ECAL
 
 
 constexpr int sizeof_float = sizeof(float);
@@ -327,15 +325,6 @@ __device__ __forceinline__ float etaFromCartesian(float4 pos) {
 
 
 __device__ __forceinline__ float dR2(float4 pos1, float4 pos2) {
-//    float mag1 = sqrtf(pos1.x*pos1.x + pos1.y*pos1.y + pos1.z*pos1.z);
-//    float cosTheta1 = mag1 > 0.0 ? pos1.z / mag1 : 1.0;
-//    float eta1 = 0.5 * logf( (1.0+cosTheta1) / (1.0-cosTheta1) );
-//    float phi1 = atan2f(pos1.y, pos1.x);
-//    float mag2 = sqrtf(pos2.x*pos2.x + pos2.y*pos2.y + pos2.z*pos2.z);
-//    float cosTheta2 = mag2 > 0.0 ? pos2.z / mag2 : 1.0;
-//    float eta2 = 0.5 * logf( (1.0+cosTheta2) / (1.0-cosTheta2) );
-//    float phi2 = atan2f(pos2.y, pos2.x);
-    
     float eta1 = etaFromCartesian(pos1);
     float phi1 = phiFromCartesian(pos1);
 

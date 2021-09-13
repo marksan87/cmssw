@@ -25,13 +25,13 @@
 #endif
 
 // Uncomment to enable GPU debugging
-#define DEBUG_GPU_ECAL
+//#define DEBUG_GPU_ECAL
 
 // Uncomment to fill TTrees
-#define DEBUG_ECAL_TREES
+//#define DEBUG_ECAL_TREES
 
 // Uncomment to save cluster collections in TTree
-#define DEBUG_SAVE_CLUSTERS
+//#define DEBUG_SAVE_CLUSTERS
 
 PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& conf)
   : 
@@ -251,11 +251,6 @@ PFClusterProducerCudaECAL::PFClusterProducerCudaECAL(const edm::ParameterSet& co
     return;
   }
   initializeCudaMemory(); 
-//  if (!PFClusterProducerCudaECAL::initializeCudaMemory()) {
-//    // Problem allocating Cuda memory
-//    std::cout<<"Unable to allocate Cuda memory"<<std::endl;
-//    return;
-//  }
 
   // TODO: Get cudaStream from cms::cuda::ScopedContextAcquire
   inputCPU.allocate(cudaConfig_, cudaStream);
@@ -334,7 +329,6 @@ PFClusterProducerCudaECAL::~PFClusterProducerCudaECAL()
       hTimers->Scale(1. / (numEvents - 10.));
   }
   hTimers->Write();
-  // MyFile->Close();
   delete MyFile;
 }
 

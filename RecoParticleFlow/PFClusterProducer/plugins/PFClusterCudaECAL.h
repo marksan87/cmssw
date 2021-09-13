@@ -1,7 +1,5 @@
 #ifndef PFClusterCudaECAL_h
 #define PFClusterCudaECAL_h
-//#include <thrust/host_vector.h>
-//#include <thrust/device_vector.h>
 #include "RecoParticleFlow/PFClusterProducer/plugins/CudaPFCommon.h"
 #include <Eigen/Dense>
 #include <cuda.h>
@@ -84,19 +82,6 @@ namespace PFClusterCudaECAL {
 				int* rhCount,
 				float (&timer)[8]
                 );
-
- void PFRechitToPFCluster_ECALV1(size_t size, 
-				float* pfrh_x,
-				float* pfrh_y, 
-				float* pfrh_z,	
-				float* pfrh_energy,	
-				float* pfrh_pt2, 
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* neigh8_Ind, 				
-				int* pcrhind,
-				float* pcrhfracind);
 
   
   void PFRechitToPFCluster_ECAL_serialize(size_t size, 

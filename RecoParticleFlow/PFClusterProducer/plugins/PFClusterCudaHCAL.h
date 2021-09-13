@@ -1,8 +1,5 @@
 #ifndef PFClusterCudaHCAL_h
 #define PFClusterCudaHCAL_h
-//#include <thrust/host_vector.h>
-//#include <thrust/device_vector.h>
-#include <thrust/copy.h>
 #include <Eigen/Dense>
 #include "RecoParticleFlow/PFClusterProducer/plugins/CudaPFCommon.h"
 
@@ -28,25 +25,6 @@ namespace PFClusterCudaHCAL {
                                const PFClustering::common::TimeResConsts barrelTimeRes = PFClustering::common::TimeResConsts(),
                                const int   h_nNeigh = 0
                                );
-
-
-  void PFRechitToPFCluster_HCALV1(size_t size, 
-				float* pfrh_x,
-				float* pfrh_y, 
-				float* pfrh_z,	
-				float* pfrh_energy,	
-				float* pfrh_pt2, 
-				int* pfrh_isSeed, 
-				int* pfrh_topoId, 
-				int* pfrh_layer, 
-				int* pfrh_depth, 
-				int* neigh8_Ind, 				
-				int* neigh4_Ind, 				
-				float* pfrhfrac, 
-				int* pfrhind, 
-				int* pcrhind,
-				float* pcrhfracind
-				);
 
 void PFRechitToPFCluster_HCALV2(size_t size, 
 				const float* __restrict__ pfrh_x,
