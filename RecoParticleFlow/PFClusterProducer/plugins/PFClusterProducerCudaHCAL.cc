@@ -488,7 +488,6 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
-  cudaDeviceSynchronize();
   cudaEventRecord(start);
 #endif
 
@@ -595,7 +594,6 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
 //           <<"Topo clustering\t"<<GPU_timers[2]<<std::endl
 //           <<"PF cluster step 1 \t"<<GPU_timers[3]<<std::endl
 //           <<"PF cluster step 2 \t"<<GPU_timers[4]<<std::endl;
-  cudaDeviceSynchronize();
   cudaEventRecord(start);
 #endif
   
@@ -717,6 +715,8 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
     __rh_isSeed.push_back(outputCPU.pfrh_isSeed[n]);
     #endif
     if(outputCPU.pfrh_isSeed[n]==1){
+//    int topoId = outputCPU.pfrh_topoId[n];
+//    if(outputCPU.pfrh_isSeed[n]==1 && topoId > -1 && outputCPU.topoRHCount[topoId] < 33 && outputCPU.topoSeedCount[topoId] == 1)
       reco::PFCluster temp;
       temp.setSeed((*rechits)[n].detId());
       int offset = outputCPU.seedFracOffsets[n];
@@ -725,16 +725,11 @@ void PFClusterProducerCudaHCAL::produce(edm::Event& e, const edm::EventSetup& es
       //std::cout<<"\tCluster (seed "<<n<<")\toffset = "<<offset<<"\ttopoId = "<<topoId<<"\tnSeeds = "<<nSeeds<<"\tnFrac = "<<outputCPU.topoRHCount[topoId] - nSeeds + 1<<std::endl;
       //std::cout<<"Seed "<<n<<" has topoId "<<topoId<<"\toffset "<<offset<<std::endl;
       for(int k=offset;k < (offset + outputCPU.topoRHCount[topoId] - nSeeds + 1);k++){
-        //std::cout<<"\tNow on k = "<<k<<"\tindex = "<<h_cuda_pcRhFracInd[k]<<"\tfrac = "<<h_cuda_pcRhFrac[k]<<std::endl;
-        //if(h_cuda_pcRhFracInd[n*maxSize+k] > -1)
-        //if(h_cuda_pcRhFracInd[n*maxSize+k] > -1 && h_cuda_pcRhFrac[n*maxSize+k] > 0.0)
+        //std::cout<<"\tNow on k = "<<k<<"\tindex = "<<outputCPU.pcrh_fracInd[k]<<"\tfrac = "<<outputCPU.pcrh_frac[k]<<std::endl;
         if(outputCPU.pcrh_fracInd[k] > -1 && outputCPU.pcrh_frac[k] > 0.0){
           const reco::PFRecHitRef& refhit = reco::PFRecHitRef(rechits,outputCPU.pcrh_fracInd[k]);
           temp.addRecHitFraction( reco::PFRecHitFraction(refhit, outputCPU.pcrh_frac[k]) );
-          //const reco::PFRecHitRef& refhit = reco::PFRecHitRef(rechits,h_cuda_pcRhFracInd[n*maxSize+k]);
-          //temp.addRecHitFraction( reco::PFRecHitFraction(refhit, h_cuda_pcRhFrac[n*maxSize+k]) );
         }
-        //if(h_cuda_pcRhFracInd[n*maxSize+k] < 0.) break;
       }
       // Check if this topoId has one only one seed
       if (nTopoSeeds.count(outputCPU.pfrh_topoId[n]) && nTopoSeeds[outputCPU.pfrh_topoId[n]] == 1 && _allCellsPositionCalc)

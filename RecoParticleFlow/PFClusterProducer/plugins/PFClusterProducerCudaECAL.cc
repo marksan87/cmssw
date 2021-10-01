@@ -463,7 +463,6 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
-  cudaDeviceSynchronize();
   cudaEventRecord(start);
 #endif
 
@@ -566,7 +565,6 @@ void PFClusterProducerCudaECAL::produce(edm::Event& e, const edm::EventSetup& es
 //           <<"Topo clustering\t"<<GPU_timers[2]<<std::endl
 //           <<"PF cluster step 1 \t"<<GPU_timers[3]<<std::endl
 //           <<"PF cluster step 2 \t"<<GPU_timers[4]<<std::endl;
-  cudaDeviceSynchronize();
   cudaEventRecord(start);
 #endif
   cudaCheck(cudaMemcpyAsync(outputCPU.pfc_iter.get(),        outputGPU.pfc_iter.get(), sizeof(int)*nRH, cudaMemcpyDeviceToHost));

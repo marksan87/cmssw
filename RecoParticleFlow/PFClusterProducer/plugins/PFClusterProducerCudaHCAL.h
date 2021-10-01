@@ -347,8 +347,6 @@ public:
   Int_t nRHperPFCTotal_CPU = 0;
   Int_t nRHperPFCTotal_GPU = 0;
 
-//  int maxSize = 80000; // Max number of rechit fractions in all pf clusters 
-
   PFClustering::HCAL::ConfigurationParameters cudaConfig_;
   PFClustering::HCAL::InputDataCPU inputCPU;
   PFClustering::HCAL::InputDataGPU inputGPU;

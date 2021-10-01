@@ -2201,15 +2201,14 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
                 int* pfcIter,
                 int* pcrhFracSize) {
     if (nRH < 1) return;
+    cudaProfilerStart();
 
 #ifdef DEBUG_GPU_ECAL
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-    cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
-    cudaProfilerStart();
     // Combined seeding & topo clustering thresholds
     seedingTopoThreshKernel_ECAL<<<(nRH+63)/64, 128>>>(nRH, fracSum, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, neigh8_Ind, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfcIter);
 
@@ -2217,7 +2216,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&timer[0], start, stop);
-    cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
 
@@ -2231,7 +2229,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&timer[1], start, stop);
-    cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
     
@@ -2247,17 +2244,14 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&timer[2], start, stop);
-    cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
     
     fastCluster<<<nRH, 256>>>(nRH, pfrh_x,  pfrh_y,  pfrh_z,  geomAxis_x, geomAxis_y, geomAxis_z, pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, neigh8_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfc_pos4, pfc_prevPos4, pfc_linearPos4, pfc_convPos4, pfc_energy, pfc_clusterT0, pfcIter);
    
-//    cudaDeviceSynchronize();
 //    printf("*** After fastCluster ***\n");
 //    printFracs<<<1,1>>>(nRH, pcrhfrac, pcrhfracind, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList);
 //
-//    cudaDeviceSynchronize();
 
     //printf("About to run printPFCIter\n");
     //printPFCIter<<<1,1>>>(nRH, pfcIter);
@@ -2276,7 +2270,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&timer[2], start, stop);
-    cudaDeviceSynchronize();
     cudaEventRecord(start);
 #endif
 
@@ -2286,7 +2279,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&timer[3], start, stop);
-    cudaDeviceSynchronize();
 #endif
     cudaProfilerStop();
 }
@@ -2330,7 +2322,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     // for(int a=0;a<16;a++){
     //if(size>0) topoKernel_ECAL<<<(size+512-1)/512, 512>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
     //}	    
-    //cudaDeviceSynchronize();
 
     dim3 gridT( (size+64-1)/64, 1 );
     dim3 blockT( 64, 8);
@@ -2395,7 +2386,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
 #endif    
     //seeding
     if(size>0) seedingKernel_ECAL_serialize<<<1,1>>>( size,  pfrh_energy,   pfrh_pt2,   pfrh_isSeed,  pfrh_topoId,  pfrh_layer,  neigh8_Ind);
-    //cudaDeviceSynchronize();
      
 #ifdef DEBUG_GPU_ECAL
     cudaEventRecord(start);
@@ -2403,7 +2393,6 @@ void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
     for(int h=0; h < nTopoLoops; h++){
         if(size>0) topoKernel_ECAL_serialize<<<1,1>>>( size, pfrh_energy,  pfrh_topoId,  pfrh_layer, neigh8_Ind);
     }	    
-    //cudaDeviceSynchronize();
 
 #ifdef DEBUG_GPU_ECAL
     float milliseconds = 0;
