@@ -18,6 +18,7 @@ namespace PFClustering {
         HF_HAD = 12,
         HGCAL = 13  // HGCal, could be EM or HAD
     };
+    
     struct TimeResConsts {
         float corrTermLowE;
         float threshLowE;
@@ -79,6 +80,29 @@ namespace PFClustering {
             timeResBarrel(_timeResBarrel) {};
     };
 
+    
+    struct CudaHCALConstants {
+        float showerSigma2;
+        float recHitEnergyNormInvEB_vec[4];
+        float recHitEnergyNormInvEE_vec[7];
+        float minFracToKeep;
+        float minFracTot;
+        float minFracInCalc;
+        float minAllowedNormalization;
+        uint32_t maxIterations;
+        float stoppingTolerance;
+        bool excludeOtherSeeds;
+        float seedEThresholdEB_vec[4];
+        float seedEThresholdEE_vec[7];
+        float seedPt2ThresholdEB;
+        float seedPt2ThresholdEE;
+        float topoEThresholdEB_vec[4];
+        float topoEThresholdEE_vec[7];
+        TimeResConsts endcapTimeResConsts;
+        TimeResConsts barrelTimeResConsts;
+        int nNeigh;
+    };
+    
     // Config parameters for ECAL2DPositionCalcWithDepthCorr
     struct ECALPosDepthCalcConfig {
         float minAllowedNormalization;

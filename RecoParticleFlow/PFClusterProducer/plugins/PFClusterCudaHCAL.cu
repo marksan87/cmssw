@@ -68,307 +68,285 @@ namespace PFClusterCudaHCAL {
   //int nTopoLoops = 100;
   int nTopoLoops = 35;
 
-
-  bool initializeCudaConstants(const float h_showerSigma2,
-                               const float (&h_recHitEnergyNormInvEB_vec)[4],
-                               const float (&h_recHitEnergyNormInvEE_vec)[7],
-                               const float h_minFracToKeep,
-                               const float h_minFracTot,
-                               const float h_minFractionInCalc,
-                               const float h_minAllowedNormalization,
-                               const int   h_maxIterations,
-                               const float h_stoppingTolerance,
-                               const bool  h_excludeOtherSeeds,
-                               const float (&h_seedEThresholdEB_vec)[4],
-                               const float (&h_seedEThresholdEE_vec)[7],
-                               const float h_seedPt2ThresholdEB,
-                               const float h_seedPt2ThresholdEE,
-                               const float (&h_topoEThresholdEB_vec)[4],
-                               const float (&h_topoEThresholdEE_vec)[7],
-                               const PFClustering::common::TimeResConsts endcapTimeResConsts,
-                               const PFClustering::common::TimeResConsts barrelTimeResConsts,
-                               const int   h_nNeigh
-                           )
-  {
-     bool status = true;
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(showerSigma2, &h_showerSigma2, sizeof_float));
+  
+  void initializeCudaConstants(const PFClustering::common::CudaHCALConstants& cudaConstants, 
+                               cudaStream_t cudaStream) {
+  
+     cudaCheck(cudaMemcpyToSymbolAsync(showerSigma2, &cudaConstants.showerSigma2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      std::cout<<"--- HCAL Cuda constant values ---"<<std::endl;
      float val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, showerSigma2, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, showerSigma2, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"showerSigma2 read from symbol: "<<val<<std::endl;
 #endif
      
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormInvEB_vec, &h_recHitEnergyNormInvEB_vec, 4*sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormInvEB_vec, &cudaConstants.recHitEnergyNormInvEB_vec, 4*sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      float val4[4];
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val4, recHitEnergyNormInvEB_vec, 4*sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val4, recHitEnergyNormInvEB_vec, 4*sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"recHitEnergyNormInvEB_vec read from symbol: ";
      for (int i = 0; i < 4; i++) {std::cout<<val4[i]<<" ";}
      std::cout<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormInvEE_vec, &h_recHitEnergyNormInvEE_vec, 7*sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(recHitEnergyNormInvEE_vec, &cudaConstants.recHitEnergyNormInvEE_vec, 7*sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      float val7[7];
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val7, recHitEnergyNormInvEE_vec, 7*sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val7, recHitEnergyNormInvEE_vec, 7*sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"recHitEnergyNormInvEE_vec read from symbol: ";
      for (int i = 0; i < 7; i++) {std::cout<<val7[i]<<" ";}
      std::cout<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(minFracToKeep, &h_minFracToKeep, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(minFracToKeep, &cudaConstants.minFracToKeep, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFracToKeep, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, minFracToKeep, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"minFracToKeep read from symbol: "<<val<<std::endl;
 #endif
     
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(minFracTot, &h_minFracTot, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(minFracTot, &cudaConstants.minFracTot, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFracTot, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, minFracTot, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"minFracTot read from symbol: "<<val<<std::endl;
 #endif
      
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(minFractionInCalc, &h_minFractionInCalc, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(minFractionInCalc, &cudaConstants.minFracInCalc, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, minFractionInCalc, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, minFractionInCalc, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"minFractionInCalc read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(minAllowedNormalization, &h_minAllowedNormalization, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(minAllowedNormalization, &cudaConstants.minAllowedNormalization, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, minAllowedNormalization, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, minAllowedNormalization, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"minAllowedNormalization read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(stoppingTolerance, &h_stoppingTolerance, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(stoppingTolerance, &cudaConstants.stoppingTolerance, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, stoppingTolerance, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, stoppingTolerance, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"stoppingTolerance read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(excludeOtherSeeds, &h_excludeOtherSeeds, sizeof(bool)));
+     cudaCheck(cudaMemcpyToSymbolAsync(excludeOtherSeeds, &cudaConstants.excludeOtherSeeds, sizeof(bool), 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      bool bval = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&bval, excludeOtherSeeds, sizeof(bool)));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&bval, excludeOtherSeeds, sizeof(bool), 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"excludeOtherSeeds read from symbol: "<<bval<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(maxIterations, &h_maxIterations, sizeof_int));
+     cudaCheck(cudaMemcpyToSymbolAsync(maxIterations, &cudaConstants.maxIterations, sizeof_int, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
-     int ival = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&ival, maxIterations, sizeof_int));
-     std::cout<<"maxIterations read from symbol: "<<ival<<std::endl;
+     uint32_t uival = 0.;
+     cudaCheck(cudaMemcpyFromSymbolAsync(&uival, maxIterations, sizeof_int, 0, cudaMemcpyDeviceToHost, cudaStream));
+     std::cout<<"maxIterations read from symbol: "<<uival<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB_vec, &h_seedEThresholdEB_vec, 4*sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEB_vec, &cudaConstants.seedEThresholdEB_vec, 4*sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val4, seedEThresholdEB_vec, 4*sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val4, seedEThresholdEB_vec, 4*sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"seedEThresholdEB_vec read from symbol: ";
      for (int i = 0; i < 4; i++) {std::cout<<val4[i]<<" ";}
      std::cout<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEE_vec, &h_seedEThresholdEE_vec, 7*sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(seedEThresholdEE_vec, &cudaConstants.seedEThresholdEE_vec, 7*sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val7, seedEThresholdEE_vec, 7*sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val7, seedEThresholdEE_vec, 7*sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"seedEThresholdEE_vec read from symbol: ";
      for (int i = 0; i < 7; i++) {std::cout<<val7[i]<<" ";}
      std::cout<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEB, &h_seedPt2ThresholdEB, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEB, &cudaConstants.seedPt2ThresholdEB, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, seedPt2ThresholdEB, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, seedPt2ThresholdEB, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"seedPt2ThresholdEB read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEE, &h_seedPt2ThresholdEE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(seedPt2ThresholdEE, &cudaConstants.seedPt2ThresholdEE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0.;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, seedPt2ThresholdEE, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, seedPt2ThresholdEE, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"seedPt2ThresholdEE read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEB_vec, &h_topoEThresholdEB_vec, 4*sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEB_vec, &cudaConstants.topoEThresholdEB_vec, 4*sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val4, topoEThresholdEB_vec, 4*sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val4, topoEThresholdEB_vec, 4*sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"topoEThresholdEB_vec read from symbol: ";
      for (int i = 0; i < 4; i++) {std::cout<<val4[i]<<" ";}
      std::cout<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEE_vec, &h_topoEThresholdEE_vec, 7*sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(topoEThresholdEE_vec, &cudaConstants.topoEThresholdEE_vec, 7*sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val7, topoEThresholdEE_vec, 7*sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val7, topoEThresholdEE_vec, 7*sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"topoEThresholdEE_vec read from symbol: ";
      for (int i = 0; i < 7; i++) {std::cout<<val7[i]<<" ";}
      std::cout<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(nNeigh, &h_nNeigh, sizeof_int));
+     cudaCheck(cudaMemcpyToSymbolAsync(nNeigh, &cudaConstants.nNeigh, sizeof_int, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
-     ival = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&ival, nNeigh, sizeof_int));
+     int ival = 0;
+     cudaCheck(cudaMemcpyFromSymbolAsync(&ival, nNeigh, sizeof_int, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"nNeigh read from symbol: "<<ival<<std::endl;
 #endif
 
      // Endcap time resolution
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(corrTermLowEE, &endcapTimeResConsts.corrTermLowE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(corrTermLowEE, &cudaConstants.endcapTimeResConsts.corrTermLowE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, corrTermLowEE, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, corrTermLowEE, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"corrTermLowEE read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(threshLowEE, &endcapTimeResConsts.threshLowE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(threshLowEE, &cudaConstants.endcapTimeResConsts.threshLowE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, threshLowEE, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, threshLowEE, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"threshLowEE read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(noiseTermE, &endcapTimeResConsts.noiseTerm, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(noiseTermE, &cudaConstants.endcapTimeResConsts.noiseTerm, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, noiseTermE, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, noiseTermE, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"noiseTermE read from symbol: "<<val<<std::endl;
 #endif
      
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(constantTermLowE2E, &endcapTimeResConsts.constantTermLowE2, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(constantTermLowE2E, &cudaConstants.endcapTimeResConsts.constantTermLowE2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, constantTermLowE2E, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, constantTermLowE2E, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"constantTermLowE2E read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(noiseTermLowEE, &endcapTimeResConsts.noiseTermLowE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(noiseTermLowEE, &cudaConstants.endcapTimeResConsts.noiseTermLowE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, noiseTermLowEE, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, noiseTermLowEE, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"noiseTermLowEE read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(threshHighEE, &endcapTimeResConsts.threshHighE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(threshHighEE, &cudaConstants.endcapTimeResConsts.threshHighE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, threshHighEE, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, threshHighEE, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"threshHighEE read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(constantTerm2E, &endcapTimeResConsts.constantTerm2, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(constantTerm2E, &cudaConstants.endcapTimeResConsts.constantTerm2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, constantTerm2E, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, constantTerm2E, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"constantTerm2E read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(resHighE2E, &endcapTimeResConsts.resHighE2, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(resHighE2E, &cudaConstants.endcapTimeResConsts.resHighE2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, resHighE2E, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, resHighE2E, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"resHighE2E read from symbol: "<<val<<std::endl;
 #endif
 
      // Barrel time resolution
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(corrTermLowEB, &barrelTimeResConsts.corrTermLowE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(corrTermLowEB, &cudaConstants.barrelTimeResConsts.corrTermLowE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, corrTermLowEB, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, corrTermLowEB, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"corrTermLowEB read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(threshLowEB, &barrelTimeResConsts.threshLowE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(threshLowEB, &cudaConstants.barrelTimeResConsts.threshLowE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, threshLowEB, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, threshLowEB, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"threshLowEB read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(noiseTermB, &barrelTimeResConsts.noiseTerm, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(noiseTermB, &cudaConstants.barrelTimeResConsts.noiseTerm, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, noiseTermB, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, noiseTermB, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"noiseTermB read from symbol: "<<val<<std::endl;
 #endif
      
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(constantTermLowE2B, &barrelTimeResConsts.constantTermLowE2, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(constantTermLowE2B, &cudaConstants.barrelTimeResConsts.constantTermLowE2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, constantTermLowE2B, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, constantTermLowE2B, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"constantTermLowE2B read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(noiseTermLowEB, &barrelTimeResConsts.noiseTermLowE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(noiseTermLowEB, &cudaConstants.barrelTimeResConsts.noiseTermLowE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, noiseTermLowEB, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, noiseTermLowEB, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"noiseTermLowEB read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(threshHighEB, &barrelTimeResConsts.threshHighE, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(threshHighEB, &cudaConstants.barrelTimeResConsts.threshHighE, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, threshHighEB, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, threshHighEB, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"threshHighEB read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(constantTerm2B, &barrelTimeResConsts.constantTerm2, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(constantTerm2B, &cudaConstants.barrelTimeResConsts.constantTerm2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, constantTerm2B, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, constantTerm2B, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"constantTerm2B read from symbol: "<<val<<std::endl;
 #endif
 
-     status &= cudaCheck(cudaMemcpyToSymbolAsync(resHighE2B, &barrelTimeResConsts.resHighE2, sizeof_float));
+     cudaCheck(cudaMemcpyToSymbolAsync(resHighE2B, &cudaConstants.barrelTimeResConsts.resHighE2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL
      // Read back the value
      val = 0;
-     status &= cudaCheck(cudaMemcpyFromSymbol(&val, resHighE2B, sizeof_float));
+     cudaCheck(cudaMemcpyFromSymbolAsync(&val, resHighE2B, sizeof_float, 0, cudaMemcpyDeviceToHost, cudaStream));
      std::cout<<"resHighE2B read from symbol: "<<val<<std::endl;
 #endif
-
-     return status;
 }
-
 
 __device__ __forceinline__ float timeResolution2Endcap(const float energy) {
   float res2 = 10000.;
@@ -3328,7 +3306,8 @@ __global__ void printRhfIndex(int* pfrh_topoId, int* topoRHCount, int* seedFracO
     }
 }
 
-void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
+void PFRechitToPFCluster_HCAL_CCLClustering(cudaStream_t cudaStream,
+                int nRH,
                 int nEdges,
                 const float* __restrict__ pfrh_x,
                 const float* __restrict__ pfrh_y,
@@ -3369,28 +3348,28 @@ void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-    cudaEventRecord(start);
+    cudaEventRecord(start, cudaStream);
 #endif
     
     // Combined seeding & topo clustering thresholds
-    seedingTopoThreshKernel_HCAL<<<(nRH+63)/64, 128>>>(nRH, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, pfrh_depth, neigh4_Ind, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfcIter);
+    seedingTopoThreshKernel_HCAL<<<(nRH+63)/64, 128, 0, cudaStream>>>(nRH, pfrh_energy, pfrh_pt2, pfrh_isSeed, pfrh_topoId, pfrh_passTopoThresh, pfrh_layer, pfrh_depth, neigh4_Ind, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfcIter);
 #ifdef DEBUG_GPU_HCAL
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, cudaStream);
     cudaEventSynchronize(stop);   
     cudaEventElapsedTime(&timer[0], start, stop);
-    cudaEventRecord(start);
+    cudaEventRecord(start, cudaStream);
 #endif
     
     //topoclustering 
     //topoClusterLinking<<<1, 1024 >>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, topoIter);
-    topoClusterLinking<<<1, 512 >>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, topoIter);
-    topoClusterContraction<<<1, 512>>>(nRH, pfrh_topoId, pfrh_isSeed, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pcrhfracind, pcrhfrac, pcrhFracSize);
+    topoClusterLinking<<<1, 512, 0, cudaStream>>>(nRH, nEdges, pfrh_topoId, pfrh_edgeId, pfrh_edgeList, pfrh_edgeMask, pfrh_passTopoThresh, topoIter);
+    topoClusterContraction<<<1, 512, 0, cudaStream>>>(nRH, pfrh_topoId, pfrh_isSeed, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pcrhfracind, pcrhfrac, pcrhFracSize);
 
 #ifdef DEBUG_GPU_HCAL
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, cudaStream);
     cudaEventSynchronize(stop);   
     cudaEventElapsedTime(&timer[1], start, stop);
-    cudaEventRecord(start);
+    cudaEventRecord(start, cudaStream);
 #endif
 
     
@@ -3398,18 +3377,18 @@ void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
     dim3 grid((nRH+31)/32, (nRH+31)/32);
     dim3 block(32, 32);
     
-    fillRhfIndex<<<grid, block>>>(nRH, pfrh_topoId, pfrh_isSeed, topoSeedCount, topoRHCount, seedFracOffsets, rhCount, pcrhfracind);
+    fillRhfIndex<<<grid, block, 0, cudaStream>>>(nRH, pfrh_topoId, pfrh_isSeed, topoSeedCount, topoRHCount, seedFracOffsets, rhCount, pcrhfracind);
     //fillRhfIndex_serialize<<<1, 1>>>(nRH, pfrh_topoId, pfrh_isSeed, topoSeedCount, topoRHCount, seedFracOffsets, rhCount, pcrhfracind);
    
 #ifdef DEBUG_GPU_HCAL
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, cudaStream);
     cudaEventSynchronize(stop);   
     cudaEventElapsedTime(&timer[2], start, stop);
-    cudaEventRecord(start);
+    cudaEventRecord(start, cudaStream);
 #endif
    
     //hcalFastCluster_optimizedComplex<<<nRH, 256>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, neigh4_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfc_pos, pfc_prevPos, pfc_energy, pfcIter);
-    hcalFastCluster_selection<<<nRH, 256>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, neigh4_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfc_pos, pfc_prevPos, pfc_energy, pfcIter);
+    hcalFastCluster_selection<<<nRH, 256, 0, cudaStream>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, neigh4_Ind, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList, pfc_pos, pfc_prevPos, pfc_energy, pfcIter);
 
 
     //printRhfIndex<<<1,1>>>(pfrh_topoId, topoRHCount, seedFracOffsets, pcrhfracind);
@@ -3433,7 +3412,7 @@ void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
     hcalFastCluster_step2<<<grid2, block2>>>( nRH, pfrh_x,  pfrh_y,  pfrh_z,  pfrh_energy, pfrh_topoId,  pfrh_isSeed,  pfrh_layer, pfrh_depth, pcrhfrac, pcrhfracind, fracSum, rhCount, topoSeedCount, topoRHCount, seedFracOffsets, topoSeedOffsets, topoSeedList);
 */
 #ifdef DEBUG_GPU_HCAL
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, cudaStream);
     cudaEventSynchronize(stop);   
     cudaEventElapsedTime(&timer[3], start, stop);
 #endif

@@ -16,6 +16,7 @@
 #include "RecoParticleFlow/PFClusterProducer/interface/PFCPositionCalculatorBase.h"
 #include "RecoParticleFlow/PFClusterProducer/interface/PFClusterEnergyCorrectorBase.h"
 
+#include "HeterogeneousCore/CUDACore/interface/ScopedContext.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/device_unique_ptr.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/host_unique_ptr.h"
@@ -193,7 +194,7 @@ namespace PFClustering {
 } // namespace PFClustering
 
 
-class PFClusterProducerCudaHCAL : public edm::stream::EDProducer<> {
+class PFClusterProducerCudaHCAL : public edm::stream::EDProducer<edm::ExternalWork> {
   typedef RecHitTopologicalCleanerBase RHCB;
   typedef InitialClusteringStepBase ICSB;
   typedef PFClusterBuilderBase PFCBB;
@@ -203,24 +204,18 @@ public:
   PFClusterProducerCudaHCAL(const edm::ParameterSet&);
   ~PFClusterProducerCudaHCAL();
 
-  void beginLuminosityBlock(const edm::LuminosityBlock&, const edm::EventSetup&) override;
-  void produce(edm::Event&, const edm::EventSetup&) override;
   //void endJob();
   //  void beginStream(edm::StreamID);
  
-  void initializeCudaMemory(int cudaDevice=0);
-  void freeCudaMemory(int cudaDevice=0);
+  void initializeCudaMemory(cudaStream_t);
+  void freeCudaMemory();
   
   // inputs
   std::vector< std::vector<float> > theThresh;
-  edm::EDGetTokenT<reco::PFRecHitCollection> _rechitsLabel;
-  edm::EDGetTokenT< std::vector<float> > _trash;
   
   // options
   const bool _prodInitClusters;
 
-  PFClustering::common::TimeResConsts endcapTimeResConsts;
-  PFClustering::common::TimeResConsts barrelTimeResConsts;
 
   // the actual algorithm
   std::vector<std::unique_ptr<RecHitTopologicalCleanerBase> > _cleaners;
@@ -239,6 +234,8 @@ public:
   reco::PFClusterCollection __pfClusters;
   reco::PFClusterCollection __pfClustersFromCuda;
   reco::PFRecHitCollection  __rechits;
+
+  std::unique_ptr<reco::PFClusterCollection> pfClustersFromCuda;
 
   // rechit pt^2
   std::vector<int>    __rh_isSeed;
@@ -321,12 +318,6 @@ public:
   TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",50,0,500,50,0,500);
   TH1F *enPFCluster_CPUvsGPU_1d = new TH1F("enPFCluster_CPUvsGPU_1d","enPFCluster_CPUvsGPU_1d",400,-2,2);
 
-  //bool doComparison=true;
-  bool doComparison=false;
-
-  //bool onlyCPU = true;
-  bool onlyCPU = false; 
-
   TH1F *deltaSumSeed  = new TH1F("deltaSumSeed", "sumSeed_{GPU} - sumSeed_{CPU}", 201, -100.5, 100.5);
   TH1F *deltaRH  = new TH1F("deltaRH", "nRH_{GPU} - nRH_{CPU}", 41, -20.5, 20.5);
   TH1F *deltaEn  = new TH1F("deltaEn", "E_{GPU} - E_{CPU}", 200, -10, 10);
@@ -347,18 +338,32 @@ public:
   Int_t nRHperPFCTotal_CPU = 0;
   Int_t nRHperPFCTotal_GPU = 0;
 
-  PFClustering::HCAL::ConfigurationParameters cudaConfig_;
-  PFClustering::HCAL::InputDataCPU inputCPU;
-  PFClustering::HCAL::InputDataGPU inputGPU;
-  
-  PFClustering::HCAL::OutputDataCPU outputCPU;
-  PFClustering::HCAL::OutputDataGPU outputGPU;
-
   int* cuda_pcrhFracSize = nullptr;
   int* cuda_topoIter = nullptr;
 
   // Set to default Cuda stream (0) for now
   cudaStream_t cudaStream = 0;
+  
+private:
+  //bool doComparison=true;
+  bool doComparison=false;
+
+  edm::EDGetTokenT<reco::PFRecHitCollection> _rechitsLabel;
+  edm::EDGetTokenT< std::vector<float> > _trash;
+  
+  cms::cuda::ContextState cudaState_;
+  
+  PFClustering::HCAL::ConfigurationParameters cudaConfig_;
+  PFClustering::common::CudaHCALConstants cudaConstants;
+  PFClustering::HCAL::InputDataCPU inputCPU;
+  PFClustering::HCAL::InputDataGPU inputGPU;
+  
+  PFClustering::HCAL::OutputDataCPU outputCPU;
+  PFClustering::HCAL::OutputDataGPU outputGPU;
+  
+  void beginLuminosityBlock(const edm::LuminosityBlock&, const edm::EventSetup&) override;
+  void acquire(edm::Event const&, edm::EventSetup const&, edm::WaitingTaskWithArenaHolder) override;
+  void produce(edm::Event&, const edm::EventSetup&) override;
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaHCAL);

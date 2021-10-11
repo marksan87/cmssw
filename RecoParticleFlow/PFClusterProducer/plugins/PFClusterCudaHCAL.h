@@ -5,26 +5,8 @@
 
 namespace PFClusterCudaHCAL { 
   
-  bool initializeCudaConstants(const float h_showerSigma = 0.,
-                               const float (&h_recHitEnergyNormEB_vec)[4] = {0.,0.,0.,0.},
-                               const float (&h_recHitEnergyNormEE_vec)[7] = {0.,0.,0.,0.,0.,0.,0.},
-                               const float h_minFracToKeep = 0.,
-                               const float h_minFracTot = 0.,
-                               const float h_minFracInCalc = 0.,
-                               const float h_minAllowedNormalization = 0.,
-                               const int   h_maxIterations = 0,
-                               const float h_stoppingTolerance = 0.,
-                               const bool  h_excludeOtherSeeds = false,
-                               const float (&h_seedEThresholdEB_vec)[4] = {0.,0.,0.,0.}, 
-                               const float (&h_seedEThresholdEE_vec)[7] = {0.,0.,0.,0.,0.,0.,0.},
-                               const float h_seedPt2ThresholdEB = 0.,
-                               const float h_seedPt2hresholdEE = 0.,
-                               const float (&h_topoEThresholdEB_vec)[4] = {0.,0.,0.,0.},
-                               const float (&h_topoEThresholdEE_vec)[7] = {0.,0.,0.,0.,0.,0.,0.},
-                               const PFClustering::common::TimeResConsts endcapTimeRes = PFClustering::common::TimeResConsts(),
-                               const PFClustering::common::TimeResConsts barrelTimeRes = PFClustering::common::TimeResConsts(),
-                               const int   h_nNeigh = 0
-                               );
+  void initializeCudaConstants(const PFClustering::common::CudaHCALConstants& cudaConstants, 
+                               cudaStream_t cudaStream = 0);
 
 void PFRechitToPFCluster_HCALV2(size_t size, 
 				const float* __restrict__ pfrh_x,
@@ -67,7 +49,8 @@ void PFRechitToPFCluster_HCALV2(size_t size,
 
 
 
-void PFRechitToPFCluster_HCAL_CCLClustering(int nRH,
+void PFRechitToPFCluster_HCAL_CCLClustering(cudaStream_t cudaStream,
+                int nRH,
                 int nEdges,
 				const float* __restrict__ pfrh_x,
 				const float* __restrict__ pfrh_y,
@@ -122,6 +105,6 @@ void PFRechitToPFCluster_HCAL_serialize(size_t size,
 				float* timer = nullptr 
 				);
 
-}  // namespace cudavectors
+}  // namespace PFClusterCudaHCAL 
 
 #endif  // ClusterCudaHCAL_h
