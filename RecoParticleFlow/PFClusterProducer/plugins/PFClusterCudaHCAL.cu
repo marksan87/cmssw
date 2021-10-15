@@ -70,7 +70,7 @@ namespace PFClusterCudaHCAL {
 
   
   void initializeCudaConstants(const PFClustering::common::CudaHCALConstants& cudaConstants, 
-                               cudaStream_t cudaStream) {
+                               const cudaStream_t cudaStream) {
   
      cudaCheck(cudaMemcpyToSymbolAsync(showerSigma2, &cudaConstants.showerSigma2, sizeof_float, 0, cudaMemcpyHostToDevice, cudaStream));
 #ifdef DEBUG_GPU_HCAL

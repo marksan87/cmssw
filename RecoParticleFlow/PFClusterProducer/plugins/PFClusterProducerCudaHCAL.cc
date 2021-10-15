@@ -157,7 +157,7 @@ PFClusterProducerCudaHCAL::PFClusterProducerCudaHCAL(const edm::ParameterSet& co
   }
 
   
-  cudaConstants.showerSigma2 = (float)std::pow(pfcConf.getParameter<double>("showerSigma"), 2.0);
+  cudaConstants.showerSigma2 = (float)std::pow(pfcConf.getParameter<double>("showerSigma"), 2.);
   const auto recHitEnergyNormConf = pfcConf.getParameterSetVector("recHitEnergyNorms");
   for (const auto& pset : recHitEnergyNormConf)
   {
@@ -329,13 +329,13 @@ PFClusterProducerCudaHCAL::~PFClusterProducerCudaHCAL()
 
 
 void PFClusterProducerCudaHCAL::initializeCudaMemory(cudaStream_t cudaStream) {
-  cudaCheck(cudaMallocManaged(&cuda_pcrhFracSize, sizeof(int)));
-  cudaCheck(cudaMallocManaged(&cuda_topoIter, sizeof(int)));
+//  cudaCheck(cudaMallocManaged(&cuda_pcrhFracSize, sizeof(int)));
+//  cudaCheck(cudaMallocManaged(&cuda_topoIter, sizeof(int)));
 }
 
 void PFClusterProducerCudaHCAL::freeCudaMemory() {
-  cudaCheck(cudaFree(cuda_pcrhFracSize));
-  cudaCheck(cudaFree(cuda_topoIter));
+//  cudaCheck(cudaFree(cuda_pcrhFracSize));
+//  cudaCheck(cudaFree(cuda_topoIter));
 }
 
 
@@ -362,7 +362,7 @@ void PFClusterProducerCudaHCAL::acquire(edm::Event const& event,
         // Only allocate Cuda memory on first event
         PFClusterCudaHCAL::initializeCudaConstants(cudaConstants, cudaStream);
 
-        PFClusterProducerCudaHCAL::initializeCudaMemory(cudaStream);
+        initializeCudaMemory(cudaStream);
 
         inputCPU.allocate(cudaConfig_, cudaStream);
         inputGPU.allocate(cudaConfig_, cudaStream);
@@ -552,17 +552,17 @@ void PFClusterProducerCudaHCAL::acquire(edm::Event const& event,
                           inputGPU.pfc_prevPos4.get(),
                           inputGPU.pfc_energy.get(),
                           kernelTimers,
-                          cuda_topoIter,
+                          outputGPU.topoIter.get(),
                           outputGPU.pfc_iter.get(),
-                          cuda_pcrhFracSize
+                          outputGPU.pcrhFracSize.get()
                           );
 
-//     cudaCheck(cudaMemcpyAsync(outputCPU.topoIter.get(), outputGPU.topoIter.get(), sizeof(int), cudaMemcpyDeviceToHost));
-     //cudaCheck(cudaMemcpyAsync(outputCPU.pcrhFracSize.get(), outputGPU.pcrhFracSize.get(), sizeof(int), cudaMemcpyDeviceToHost));
+  cudaCheck(cudaMemcpyAsync(outputCPU.topoIter.get(), outputGPU.topoIter.get(), sizeof(int), cudaMemcpyDeviceToHost, cudaStream));
+  cudaCheck(cudaMemcpyAsync(outputCPU.pcrhFracSize.get(), outputGPU.pcrhFracSize.get(), sizeof(int), cudaMemcpyDeviceToHost, cudaStream));
 
   if (cudaStreamQuery(cudaStream) != cudaSuccess) cudaCheck(cudaStreamSynchronize(cudaStream));
   // Total size of allocated rechit fraction arrays (includes some extra padding for rechits that don't end up passing cuts)
-  nFracs = *cuda_pcrhFracSize;
+  nFracs = outputCPU.pcrhFracSize[0];
 
 #ifdef DEBUG_GPU_HCAL
   GPU_timers[1] = kernelTimers[0];  // Seeding
@@ -675,8 +675,7 @@ void PFClusterProducerCudaHCAL::acquire(edm::Event const& event,
       }
   }
   
-
-  topoIter = *cuda_topoIter;
+  topoIter = outputCPU.topoIter[0];
   topoIterations->Fill(topoIter);
   topoIter_vs_nRH->Fill(rh_size, topoIter);
 

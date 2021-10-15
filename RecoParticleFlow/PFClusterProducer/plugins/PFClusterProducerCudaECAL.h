@@ -17,6 +17,7 @@
 #include "RecoParticleFlow/PFClusterProducer/interface/PFCPositionCalculatorBase.h"
 #include "RecoParticleFlow/PFClusterProducer/interface/PFClusterEnergyCorrectorBase.h"
 
+#include "HeterogeneousCore/CUDACore/interface/ScopedContext.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/device_unique_ptr.h"
 #include "HeterogeneousCore/CUDAUtilities/interface/host_unique_ptr.h"
@@ -60,7 +61,7 @@ namespace PFClustering {
       cms::cuda::host::unique_ptr<int[]> pfrh_edgeId;
       cms::cuda::host::unique_ptr<int[]> pfrh_edgeList;
   
-      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0 /* default Cuda stream */) {
+      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0) {
         pfrh_x = cms::cuda::make_host_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
         pfrh_y = cms::cuda::make_host_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
         pfrh_z = cms::cuda::make_host_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
@@ -93,10 +94,10 @@ namespace PFClustering {
       cms::cuda::host::unique_ptr<int[]> topoSeedList;
 
       cms::cuda::host::unique_ptr<int[]> pfc_iter; // Iterations per pf cluster (by seed index)
-//      cms::cuda::host::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
-//      cms::cuda::host::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
+      cms::cuda::host::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
+      cms::cuda::host::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
       
-      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0 /* default Cuda stream */) {
+      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0) {
         pfrh_topoId = cms::cuda::make_host_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         pfrh_isSeed = cms::cuda::make_host_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         pcrh_frac = cms::cuda::make_host_unique<float[]>(sizeof(float)*config.maxPFCFracs, cudaStream);
@@ -110,8 +111,8 @@ namespace PFClustering {
         topoSeedList = cms::cuda::make_host_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         
         pfc_iter = cms::cuda::make_host_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
-//        topoIter = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
-//        pcrhFracSize = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
+        topoIter = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
+        pcrhFracSize = cms::cuda::make_host_unique<int[]>(sizeof(int), cudaStream);
       }
   };
 
@@ -135,7 +136,7 @@ namespace PFClustering {
       
       cms::cuda::device::unique_ptr<bool[]> pfrh_passTopoThresh;
       
-      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0 /* default Cuda stream */) {
+      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0) {
         pfrh_x = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
         pfrh_y = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
         pfrh_z = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxRH, cudaStream);
@@ -171,10 +172,10 @@ namespace PFClustering {
       cms::cuda::device::unique_ptr<int[]> topoSeedList;
 
       cms::cuda::device::unique_ptr<int[]> pfc_iter; // Iterations per pf cluster (by seed index)
-//      cms::cuda::device::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
-//      cms::cuda::device::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
+      cms::cuda::device::unique_ptr<int[]> topoIter;  // Iterations for topo clustering to converge
+      cms::cuda::device::unique_ptr<int[]> pcrhFracSize;  // Total number of pfc fractions to copy back
       
-      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0 /* default Cuda stream */) {
+      void allocate(ConfigurationParameters const& config, cudaStream_t cudaStream = 0) {
         pfrh_topoId = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         pfrh_isSeed = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         pcrh_frac = cms::cuda::make_device_unique<float[]>(sizeof(float)*config.maxPFCFracs, cudaStream);
@@ -188,8 +189,8 @@ namespace PFClustering {
         topoSeedList = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
         
         pfc_iter = cms::cuda::make_device_unique<int[]>(sizeof(int)*config.maxRH, cudaStream);
-//        topoIter = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
-//        pcrhFracSize = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
+        topoIter = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
+        pcrhFracSize = cms::cuda::make_device_unique<int[]>(sizeof(int), cudaStream);
       }
   };
 
@@ -220,7 +221,7 @@ namespace PFClustering {
  } // namespace ECAL
 } // namespace PFClustering
 
-class PFClusterProducerCudaECAL : public edm::stream::EDProducer<> {
+class PFClusterProducerCudaECAL : public edm::stream::EDProducer<edm::ExternalWork> {
   typedef RecHitTopologicalCleanerBase RHCB;
   typedef InitialClusteringStepBase ICSB;
   typedef PFClusterBuilderBase PFCBB;
@@ -230,18 +231,12 @@ public:
   PFClusterProducerCudaECAL(const edm::ParameterSet&);
   ~PFClusterProducerCudaECAL();
 
-  void beginLuminosityBlock(const edm::LuminosityBlock&, const edm::EventSetup&) override;
-  void produce(edm::Event&, const edm::EventSetup&) override;
   //void endJob();
   //  void beginStream(edm::StreamID);
  
-  void initializeCudaMemory(int cudaDevice=0);
-  void freeCudaMemory(int cudaDevice=0); 
+  void initializeCudaMemory(cudaStream_t cudaStream);
+  void freeCudaMemory(); 
   
-  // inputs
-  std::vector< std::vector<float> > theThresh;
-  edm::EDGetTokenT<reco::PFRecHitCollection> _rechitsLabel;
-  edm::EDGetTokenT< std::vector<float> > _trash;
  
 
   // options
@@ -346,12 +341,6 @@ public:
   TH2F *nRh_CPUvsGPU = new TH2F("nRh_CPUvsGPU","nRh_CPUvsGPU",101,-0.5,100.5,101,-0.5,100.5);
   TH2F *enPFCluster_CPUvsGPU = new TH2F("enPFCluster_CPUvsGPU","enPFCluster_CPUvsGPU",50,0,500,50,0,500);
 
-  //bool doComparison=true;
-  bool doComparison=false;
-
-  //bool onlyCPU = true;
-  bool onlyCPU = false; 
-
   TH1F *deltaSumSeed  = new TH1F("deltaSumSeed", "sumSeed_{GPU} - sumSeed_{CPU}", 201, -100.5, 100.5);
   TH1F *deltaRH  = new TH1F("deltaRH", "nRH_{GPU} - nRH_{CPU}", 41, -20.5, 20.5);
   TH1F *deltaEn  = new TH1F("deltaEn", "E_{GPU} - E_{CPU}", 200, -10, 10);
@@ -371,24 +360,30 @@ public:
   Int_t nRHperPFCTotal_CPU = 0;
   Int_t nRHperPFCTotal_GPU = 0;
 
-//  int maxRH = 2000;     // Max number of rechits
-//  int maxNeighbors = 8; // Max number of rechit neighbors for edge list
 
+private:
+  void beginLuminosityBlock(const edm::LuminosityBlock&, const edm::EventSetup&) override;
+  void acquire(edm::Event const&, edm::EventSetup const&, edm::WaitingTaskWithArenaHolder) override;
+  void produce(edm::Event&, const edm::EventSetup&) override;
+  
+  bool doComparison=true;
+  //bool doComparison=false;
+
+  // inputs
+  edm::EDGetTokenT<reco::PFRecHitCollection> _rechitsLabel;
+  
+  cms::cuda::ContextState cudaState_;
+  cudaStream_t cudaStream = 0;
+
+  PFClustering::common::CudaECALConstants cudaConstants;
   PFClustering::ECAL::ConfigurationParameters cudaConfig_;
   PFClustering::ECAL::InputDataCPU inputCPU;
   PFClustering::ECAL::OutputDataCPU outputCPU;
   PFClustering::ECAL::InputDataGPU inputGPU;
   PFClustering::ECAL::OutputDataGPU outputGPU;
   PFClustering::ECAL::ScratchDataGPU scratchGPU;
- 
-  PFClustering::common::PosCalcConfig posCalcConfig;
-  PFClustering::common::ECALPosDepthCalcConfig convergencePosCalcConfig;
 
-  int* cuda_pcrhFracSize = nullptr;
-  int* cuda_topoIter = nullptr;
-
-  // Set to default Cuda stream (0) for now
-  cudaStream_t cudaStream = 0;
+  std::unique_ptr<reco::PFClusterCollection> pfClustersFromCuda;
 };
 
 DEFINE_FWK_MODULE(PFClusterProducerCudaECAL);

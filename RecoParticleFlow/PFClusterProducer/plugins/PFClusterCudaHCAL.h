@@ -6,7 +6,7 @@
 namespace PFClusterCudaHCAL { 
   
   void initializeCudaConstants(const PFClustering::common::CudaHCALConstants& cudaConstants, 
-                               cudaStream_t cudaStream = 0);
+                               const cudaStream_t cudaStream = 0);
 
 void PFRechitToPFCluster_HCALV2(size_t size, 
 				const float* __restrict__ pfrh_x,

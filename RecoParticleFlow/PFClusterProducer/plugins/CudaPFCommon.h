@@ -81,28 +81,6 @@ namespace PFClustering {
     };
 
     
-    struct CudaHCALConstants {
-        float showerSigma2;
-        float recHitEnergyNormInvEB_vec[4];
-        float recHitEnergyNormInvEE_vec[7];
-        float minFracToKeep;
-        float minFracTot;
-        float minFracInCalc;
-        float minAllowedNormalization;
-        uint32_t maxIterations;
-        float stoppingTolerance;
-        bool excludeOtherSeeds;
-        float seedEThresholdEB_vec[4];
-        float seedEThresholdEE_vec[7];
-        float seedPt2ThresholdEB;
-        float seedPt2ThresholdEE;
-        float topoEThresholdEB_vec[4];
-        float topoEThresholdEE_vec[7];
-        TimeResConsts endcapTimeResConsts;
-        TimeResConsts barrelTimeResConsts;
-        int nNeigh;
-    };
-    
     // Config parameters for ECAL2DPositionCalcWithDepthCorr
     struct ECALPosDepthCalcConfig {
         float minAllowedNormalization;
@@ -137,8 +115,51 @@ namespace PFClustering {
             minFractionInCalc(_minFractionInCalc),
             W0(_W0) {};
     };
+    
+    struct CudaHCALConstants {
+        float showerSigma2;
+        float recHitEnergyNormInvEB_vec[4];
+        float recHitEnergyNormInvEE_vec[7];
+        float minFracToKeep;
+        float minFracTot;
+        float minFracInCalc;
+        float minAllowedNormalization;
+        uint32_t maxIterations;
+        float stoppingTolerance;
+        bool excludeOtherSeeds;
+        float seedEThresholdEB_vec[4];
+        float seedEThresholdEE_vec[7];
+        float seedPt2ThresholdEB;
+        float seedPt2ThresholdEE;
+        float topoEThresholdEB_vec[4];
+        float topoEThresholdEE_vec[7];
+        int nNeigh;
+        TimeResConsts endcapTimeResConsts;
+        TimeResConsts barrelTimeResConsts;
+    };
+    
+    struct CudaECALConstants {
+        float showerSigma2;
+        float recHitEnergyNormInvEB;
+        float recHitEnergyNormInvEE;
+        float minFracToKeep;
+        float minFracTot;
+        uint32_t maxIterations;
+        float stoppingTolerance;
+        bool excludeOtherSeeds;
+        float seedEThresholdEB;
+        float seedEThresholdEE;
+        float seedPt2ThresholdEB;
+        float seedPt2ThresholdEE;
+        float topoEThresholdEB;
+        float topoEThresholdEE;
+        int nNeigh;
+        PosCalcConfig posCalcConfig;
+        ECALPosDepthCalcConfig convergencePosCalcConfig;
+    };
+
   }  // namespace common
-}   // namespace PFClusterCuda
+}   // namespace PFClustering
 
 
 #endif // CudaGenericPFlowPositionCalcCommon_h

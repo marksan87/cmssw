@@ -5,29 +5,32 @@
 #include <cuda.h>
 
 namespace PFClusterCudaECAL {
+  void initializeCudaConstants(const PFClustering::common::CudaECALConstants& cudaConstants,
+                               const cudaStream_t cudaStream = 0);
   
-  bool initializeCudaConstants(const float h_showerSigma2 = 0.,
-                               const float h_recHitEnergyNormInvEB = 0.,
-                               const float h_recHitEnergyNormInvEE = 0., 
-                               const float h_minFracToKeep = 0.,
-                               const float h_minFracTot = 0.,
-                               const int   h_maxIterations = 0,
-                               const float h_stoppingTolerance = 0.,
-                               const bool  h_excludeOtherSeeds = false, 
-                               const float h_seedEThresholdEB = 0.,
-                               const float h_seedEThresholdEE = 0.,
-                               const float h_seedPt2ThresholdEB = 0.,
-                               const float h_seedPt2hresholdEE = 0., 
-                               const float h_topoEThresholdEB = 0., 
-                               const float h_topoEThresholdEE = 0.,
-                               const int   h_nNeigh = 0,
-                               const int   h_maxSize = 50,
-                               const PFClustering::common::PosCalcConfig h_posCalcConfig = PFClustering::common::PosCalcConfig(),
-                               const PFClustering::common::ECALPosDepthCalcConfig h_posConvCalcConfig = PFClustering::common::ECALPosDepthCalcConfig()
+  void initializeCudaConstants(const float h_showerSigma2,
+                               const float h_recHitEnergyNormInvEB,
+                               const float h_recHitEnergyNormInvEE, 
+                               const float h_minFracToKeep,
+                               const float h_minFracTot,
+                               const uint32_t   h_maxIterations,
+                               const float h_stoppingTolerance,
+                               const bool  h_excludeOtherSeeds, 
+                               const float h_seedEThresholdEB,
+                               const float h_seedEThresholdEE,
+                               const float h_seedPt2ThresholdEB,
+                               const float h_seedPt2hresholdEE, 
+                               const float h_topoEThresholdEB, 
+                               const float h_topoEThresholdEE,
+                               const int   h_nNeigh,
+                               const PFClustering::common::PosCalcConfig h_posCalcConfig,
+                               const PFClustering::common::ECALPosDepthCalcConfig h_posConvCalcConfig,
+                               cudaStream_t cudaStream = 0
                                );
 
 
-  void PFRechitToPFCluster_ECAL_CCLClustering(int nRH,
+  void PFRechitToPFCluster_ECAL_CCLClustering(cudaStream_t cudaStream,
+                int nRH,
                 int nEdges,
                 const float* __restrict__ pfrh_x,
                 const float* __restrict__ pfrh_y,
